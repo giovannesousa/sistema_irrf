@@ -1,0 +1,15 @@
+# public/.htaccess - VERSÃO SIMPLIFICADA PARA TESTE
+
+RewriteEngine On
+
+# Redirecionar acesso direto para index.php
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)$ index.php [QSA,L]
+
+# Proteger acesso direto às pastas
+Options -Indexes
+
+# Permitir tudo temporariamente para teste
+Order Allow,Deny
+Allow from all

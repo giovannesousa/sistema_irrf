@@ -1,0 +1,44 @@
+# public/.htaccess
+
+RewriteEngine On
+
+# Redirecionar acesso direto para index.php
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)$ index.php [QSA,L]
+
+# Proteger acesso direto às pastas
+Options -Indexes
+
+# Segurança - negar acesso direto a arquivos .php (exceto os permitidos)
+<FilesMatch "\.php$">
+    Order Deny,Allow
+    Deny from all
+</FilesMatch>
+
+# Permitir acesso a arquivos específicos
+<Files "index.php">
+    Order Allow,Deny
+    Allow from all
+</Files>
+
+<Files "login.php">
+    Order Allow,Deny
+    Allow from all
+</Files>
+
+<Files "logout.php">
+    Order Allow,Deny
+    Allow from all
+</Files>
+
+# ADICIONE ESTAS LINHAS PARA PERMITIR A API
+<Files "api/nota.php">
+    Order Allow,Deny
+    Allow from all
+</Files>
+
+<Files "api/*.php">
+    Order Allow,Deny
+    Allow from all
+</Files>

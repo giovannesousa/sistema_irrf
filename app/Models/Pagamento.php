@@ -18,41 +18,54 @@ class Pagamento
     public function criar($dados)
     {
         try {
-            // Verificar se a tabela pagamentos existe e tem as colunas corretas
-            $sql = "INSERT INTO pagamentos 
-                    (id_nota, data_baixa, valor_pago, responsavel_baixa) 
-                    VALUES (:id_nota, :data_baixa, :valor_pago, :responsavel_baixa)";
-
-            $stmt = $this->db->prepare($sql);
-
             // Valores obrigatórios
             $id_nota = intval($dados['id_nota']);
-            $data_baixa = $dados['data_baixa'] ?? date('Y-m-d');
+            $data_pagamento = $dados['data_pagamento'] ?? date('Y-m-d');
             $valor_pago = floatval($dados['valor_pago']);
             $responsavel_baixa = intval($dados['responsavel_baixa']);
+            
+            // Valores Reinf
+            $valor_bruto = floatval($dados['valor_bruto'] ?? 0);
+            $valor_base_ir = floatval($dados['valor_base_ir'] ?? 0);
+            $valor_ir = floatval($dados['valor_ir'] ?? 0);
 
             // Observações é opcional
             $observacoes = $dados['observacoes'] ?? null;
 
-            // Se a tabela tiver coluna observacoes, usar SQL diferente
+            // Verificar colunas opcionais
             $hasObservacoes = $this->verificarColunaExiste('pagamentos', 'observacoes');
+            // Se o valor bruto foi passado nos dados, assumimos que deve ser gravado (Reinf)
+            $hasReinf = isset($dados['valor_bruto']) || $this->verificarColunaExiste('pagamentos', 'valor_bruto');
+
+            $campos = "id_nota, data_pagamento, valor_pago, responsavel_baixa";
+            $params = ":id_nota, :data_pagamento, :valor_pago, :responsavel_baixa";
+
+            if ($hasReinf) {
+                $campos .= ", valor_bruto, valor_base_ir, valor_ir";
+                $params .= ", :valor_bruto, :valor_base_ir, :valor_ir";
+            }
 
             if ($hasObservacoes) {
-                $sql = "INSERT INTO pagamentos 
-                        (id_nota, data_baixa, valor_pago, responsavel_baixa, observacoes) 
-                        VALUES (:id_nota, :data_baixa, :valor_pago, :responsavel_baixa, :observacoes)";
+                $campos .= ", observacoes";
+                $params .= ", :observacoes";
+            }
 
-                $stmt = $this->db->prepare($sql);
-                $stmt->bindParam(':id_nota', $id_nota, PDO::PARAM_INT);
-                $stmt->bindParam(':data_baixa', $data_baixa);
-                $stmt->bindParam(':valor_pago', $valor_pago);
-                $stmt->bindParam(':responsavel_baixa', $responsavel_baixa, PDO::PARAM_INT);
+            $sql = "INSERT INTO pagamentos ($campos) VALUES ($params)";
+            $stmt = $this->db->prepare($sql);
+
+            $stmt->bindParam(':id_nota', $id_nota, PDO::PARAM_INT);
+            $stmt->bindParam(':data_pagamento', $data_pagamento);
+            $stmt->bindParam(':valor_pago', $valor_pago);
+            $stmt->bindParam(':responsavel_baixa', $responsavel_baixa, PDO::PARAM_INT);
+
+            if ($hasReinf) {
+                $stmt->bindParam(':valor_bruto', $valor_bruto);
+                $stmt->bindParam(':valor_base_ir', $valor_base_ir);
+                $stmt->bindParam(':valor_ir', $valor_ir);
+            }
+            
+            if ($hasObservacoes) {
                 $stmt->bindParam(':observacoes', $observacoes);
-            } else {
-                $stmt->bindParam(':id_nota', $id_nota, PDO::PARAM_INT);
-                $stmt->bindParam(':data_baixa', $data_baixa);
-                $stmt->bindParam(':valor_pago', $valor_pago);
-                $stmt->bindParam(':responsavel_baixa', $responsavel_baixa, PDO::PARAM_INT);
             }
 
             if ($stmt->execute()) {
@@ -108,9 +121,12 @@ class Pagamento
                 $sql = "CREATE TABLE IF NOT EXISTS `pagamentos` (
                     `id` int(11) NOT NULL AUTO_INCREMENT,
                     `id_nota` int(11) NOT NULL,
-                    `data_baixa` date NOT NULL,
+                    `data_pagamento` date NOT NULL,
                     `valor_pago` decimal(15,2) NOT NULL,
                     `responsavel_baixa` int(11) DEFAULT NULL,
+                    `valor_bruto` decimal(15,2) DEFAULT 0.00,
+                    `valor_base_ir` decimal(15,2) DEFAULT 0.00,
+                    `valor_ir` decimal(15,2) DEFAULT 0.00,
                     `observacoes` text COLLATE utf8mb4_unicode_ci DEFAULT NULL,
                     `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
                     PRIMARY KEY (`id`),
@@ -142,7 +158,7 @@ class Pagamento
                     FROM pagamentos p
                     LEFT JOIN usuarios u ON p.responsavel_baixa = u.id
                     WHERE p.id_nota = :id_nota
-                    ORDER BY p.data_baixa DESC";
+                    ORDER BY p.data_pagamento DESC";
 
             $stmt = $this->db->prepare($sql);
             $stmt->bindParam(':id_nota', $idNota, PDO::PARAM_INT);
@@ -153,7 +169,7 @@ class Pagamento
             // Formatar valores e datas
             foreach ($pagamentos as &$pagamento) {
                 $pagamento['valor_pago_formatado'] = 'R$ ' . number_format($pagamento['valor_pago'], 2, ',', '.');
-                $pagamento['data_baixa_formatada'] = date('d/m/Y', strtotime($pagamento['data_baixa']));
+                $pagamento['data_pagamento_formatada'] = date('d/m/Y', strtotime($pagamento['data_pagamento']));
             }
 
             return $pagamentos;

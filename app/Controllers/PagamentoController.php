@@ -79,10 +79,13 @@ class PagamentoController
                 // 2. Registrar pagamento
                 $dadosPagamento = [
                     'id_nota' => $idNota,
-                    'data_baixa' => $dataPagamento,
+                    'data_pagamento' => $dataPagamento,
                     'valor_pago' => $nota['valor_liquido'],
                     'responsavel_baixa' => $idUsuario,
-                    'observacoes' => $observacoes
+                    'observacoes' => $observacoes,
+                    'valor_bruto' => floatval($nota['valor_bruto']),
+                    'valor_base_ir' => floatval($nota['valor_bruto']),
+                    'valor_ir' => floatval($nota['valor_irrf_retido'])
                 ];
                 
                 $pagamentoId = $this->pagamentoModel->criar($dadosPagamento);

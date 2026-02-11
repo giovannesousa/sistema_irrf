@@ -396,13 +396,19 @@ if ($action == 'registrar_pagamento') {
         
         // 4. Registrar no histórico de pagamentos
         $sql = "INSERT INTO pagamentos 
-                (id_nota, data_baixa, valor_pago, responsavel_baixa) 
-                VALUES (:id_nota, CURDATE(), :valor_pago, :responsavel_baixa)";
+                (id_nota, data_pagamento, valor_pago, responsavel_baixa, valor_bruto, valor_base_ir, valor_ir) 
+                VALUES (:id_nota, CURDATE(), :valor_pago, :responsavel_baixa, :valor_bruto, :valor_base_ir, :valor_ir)";
         
         $stmt = $db->prepare($sql);
         $stmt->bindParam(':id_nota', $idNota, PDO::PARAM_INT);
         $stmt->bindParam(':valor_pago', $nota['valor_liquido']);
         $stmt->bindParam(':responsavel_baixa', $usuario['id'], PDO::PARAM_INT);
+        
+        // Valores Reinf
+        $stmt->bindValue(':valor_bruto', $nota['valor_bruto']);
+        $stmt->bindValue(':valor_base_ir', $nota['valor_bruto']);
+        $stmt->bindValue(':valor_ir', $nota['valor_irrf_retido']);
+        
         $stmt->execute();
         
         // 5. Confirmar transação
@@ -486,13 +492,19 @@ if ($action == 'registrar_pagamento_multiplo') {
                 
                 // Registrar pagamento
                 $sqlPagamento = "INSERT INTO pagamentos 
-                                (id_nota, data_baixa, valor_pago, responsavel_baixa) 
-                                VALUES (:id_nota, CURDATE(), :valor_pago, :responsavel_baixa)";
+                                (id_nota, data_pagamento, valor_pago, responsavel_baixa, valor_bruto, valor_base_ir, valor_ir) 
+                                VALUES (:id_nota, CURDATE(), :valor_pago, :responsavel_baixa, :valor_bruto, :valor_base_ir, :valor_ir)";
                 
                 $stmtPagamento = $db->prepare($sqlPagamento);
                 $stmtPagamento->bindParam(':id_nota', $idNota, PDO::PARAM_INT);
                 $stmtPagamento->bindParam(':valor_pago', $nota['valor_liquido']);
                 $stmtPagamento->bindParam(':responsavel_baixa', $usuario['id'], PDO::PARAM_INT);
+                
+                // Valores Reinf
+                $stmtPagamento->bindValue(':valor_bruto', $nota['valor_bruto']);
+                $stmtPagamento->bindValue(':valor_base_ir', $nota['valor_bruto']);
+                $stmtPagamento->bindValue(':valor_ir', $nota['valor_irrf_retido']);
+                
                 $stmtPagamento->execute();
                 
                 $sucesso++;

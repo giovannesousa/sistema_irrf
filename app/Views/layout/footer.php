@@ -38,16 +38,19 @@
             }
         });
 
-        // Verificar sessão a cada 5 minutos
-        setInterval(function () {
-            $.ajax({
-                url: '/sistema_irrf/app/Controllers/AuthController.php?action=verificar',
-                type: 'GET',
-                error: function () {
-                    window.location.href = '/sistema_irrf/public/login.php?session=expired';
-                }
-            });
-        }, 300000); // 5 minutos
+        /*
+        // A verificação de sessão a cada 5 minutos foi desativada para impedir o redirecionamento automático.
+        //
+        // setInterval(function () {
+        //     $.ajax({
+        //         url: '/sistema_irrf/app/Controllers/AuthController.php?action=verificar',
+        //         type: 'GET',
+        //         error: function () {
+        //             window.location.href = '/sistema_irrf/public/login.php?session=expired';
+        //         }
+        //     });
+        // }, 300000); // 5 minutos
+        */
     });
 </script>
 </body>

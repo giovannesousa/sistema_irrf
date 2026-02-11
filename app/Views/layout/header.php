@@ -1,21 +1,5 @@
 <?php
-if (!isset($_SESSION['logado']) || $_SESSION['logado'] !== true) {
-    // Se não estiver logado e esta não for a página de login, redireciona
-    $current_page = basename($_SERVER['PHP_SELF']);
-    if ($current_page !== 'login.php') {
-        header('Location: /sistema_irrf/public/login.php');
-        exit;
-    }
-}
-
 $usuario = $_SESSION['usuario'] ?? null;
-
-// Se não tem usuário mas está logado, algo está errado
-if (isset($_SESSION['logado']) && $_SESSION['logado'] === true && !$usuario) {
-    session_destroy();
-    header('Location: /sistema_irrf/public/login.php');
-    exit;
-}
 ?>
 <!DOCTYPE html>
 <html lang="pt-br">
@@ -323,6 +307,14 @@ if (isset($_SESSION['logado']) && $_SESSION['logado'] === true && !$usuario) {
                             <span
                                 class="badge bg-warning notification-badge"><?php echo $estatisticas['pendentes']; ?></span>
                         <?php endif; ?>
+                    </a>
+                </div>
+
+                <div class="nav-item">
+                    <a class="nav-link <?php echo ($pagina_atual == 'reinf') ? 'active' : ''; ?>"
+                        href="/sistema_irrf/public/reinf">
+                        <i class="bi bi-cloud-arrow-up"></i>
+                        <span>EFD-Reinf</span>
                     </a>
                 </div>
 

@@ -53,7 +53,11 @@ $script_name = dirname($_SERVER['SCRIPT_NAME']);
 $route = str_replace($script_name, '', $request_uri);
 $route = trim($route, '/');
 $route_parts = explode('/', $route);
-$page = $route_parts[0] ?: 'dashboard';
+$page = $route_parts[0];
+
+if (empty($page) || $page === 'index.php') {
+    $page = $_GET['page'] ?? 'dashboard';
+}
 
 // Verificar se precisa de autenticação
 if (!in_array($page, $public_pages)) {
@@ -80,6 +84,7 @@ $routes = [
     'pagar-nota' => 'pagar-nota.php',
     'relatorios' => 'relatorios.php',
     'fornecedores' => 'fornecedores.php',
+    'reinf' => 'reinf/dashboard.php',
     'configuracoes' => 'configuracoes.php',
     'usuarios' => 'usuarios.php',
     'orgao' => 'orgao.php',

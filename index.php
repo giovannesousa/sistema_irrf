@@ -78,6 +78,7 @@ $routes = [
     'pagar-nota' => 'pagar-nota.php',
     'relatorios' => 'relatorios.php',
     'fornecedores' => 'fornecedores.php',
+    'reinf' => 'reinf/dashboard.php',
     'configuracoes' => 'configuracoes.php',
     'usuarios' => 'usuarios.php',
     'orgao' => 'orgao.php',

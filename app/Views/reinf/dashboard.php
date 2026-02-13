@@ -3,6 +3,13 @@
 require_once __DIR__ . '/../layout/header.php';
 ?>
 
+<style>
+    .scrollable-table-container {
+        max-height: 500px; /* Você pode ajustar esta altura conforme necessário */
+        overflow-y: auto;
+    }
+</style>
+
 <div class="container-fluid mt-4">
 
     <div class="d-flex justify-content-between align-items-center mb-4">
@@ -30,7 +37,7 @@ require_once __DIR__ . '/../layout/header.php';
                 <div class="card-header bg-white border-bottom-0 py-3">
                     <h5 class="card-title text-primary mb-0"><i class="fas fa-list-ul me-2"></i>Pendências de Envio</h5>
                 </div>
-                <div class="card-body p-0 table-responsive">
+                <div class="card-body p-0 table-responsive scrollable-table-container">
                     <table class="table table-hover align-middle mb-0" id="tabelaPendencias">
                         <thead class="table-light">
                             <tr>
@@ -70,9 +77,9 @@ require_once __DIR__ . '/../layout/header.php';
                 <div class="card-header bg-white border-bottom-0 py-3 d-flex justify-content-between">
                     <h5 class="card-title text-secondary mb-0"><i class="fas fa-history me-2"></i>Histórico de
                         Transmissões</h5>
-                    <span class="badge bg-light text-dark border">Últimos 10 lotes</span>
+                    <span class="badge bg-light text-dark border">Últimos 50 registros</span>
                 </div>
-                <div class="card-body p-0 table-responsive">
+                <div class="card-body p-0 table-responsive scrollable-table-container">
                     <table class="table table-striped align-middle mb-0" id="tabelaHistorico">
                         <thead class="table-light">
                             <tr>
@@ -120,10 +127,9 @@ require_once __DIR__ . '/../layout/header.php';
 <script>
     $(document).ready(function () {
         carregarDados();
-        $(document).ready(function() {
-    // Verifica status do R-1000 ao carregar dashboard
-    $.ajax({
-        url: '/public/api/r1000.php?action=verificar_status',
+        // Verifica status do R-1000 ao carregar dashboard
+        $.ajax({
+        url: '/sistema_irrf/public/api/api-r1000.php?action=verificar_status',
         type: 'GET',
         dataType: 'json',
         success: function(response) {
@@ -147,8 +153,6 @@ require_once __DIR__ . '/../layout/header.php';
             }
         }
     });
-});
-
     });
 
     // --- FUNÇÕES PRINCIPAIS ---
@@ -158,7 +162,7 @@ require_once __DIR__ . '/../layout/header.php';
         toggleLoading(true);
 
         $.ajax({
-            url: 'api/reinf.php?action=listar_pendencias',
+            url: '/sistema_irrf/public/api/reinf.php?action=listar_pendencias',
             method: 'GET',
             data: { periodo: periodo },
             dataType: 'json',
@@ -197,7 +201,7 @@ require_once __DIR__ . '/../layout/header.php';
         else $('#loadingOverlay').removeClass('d-none');
 
         $.ajax({
-            url: 'api/reinf.php?action=validar_lote',
+            url: '/sistema_irrf/public/api/reinf.php?action=validar_lote',
             method: 'POST',
             data: JSON.stringify({ periodo: periodo, fornecedores: fornecedores }),
             contentType: 'application/json',
@@ -263,7 +267,7 @@ require_once __DIR__ . '/../layout/header.php';
         toggleLoading(true);
 
         $.ajax({
-            url: 'api/reinf.php?action=enviar_lote',
+            url: '/sistema_irrf/public/api/reinf.php?action=enviar_lote',
             method: 'POST',
             data: JSON.stringify({
                 periodo: periodo,
@@ -295,7 +299,7 @@ require_once __DIR__ . '/../layout/header.php';
     function consultarLote(idLote) {
         toggleLoading(true);
         $.ajax({
-            url: 'api/reinf.php?action=consultar_lote',
+            url: '/sistema_irrf/public/api/reinf.php?action=consultar_lote',
             method: 'POST',
             data: { id_lote: idLote },
             dataType: 'json',
@@ -402,7 +406,7 @@ require_once __DIR__ . '/../layout/header.php';
     function verDetalhes(idLote) {
         toggleLoading(true);
         $.ajax({
-            url: 'api/reinf.php?action=detalhar_lote',
+            url: '/sistema_irrf/public/api/reinf.php?action=detalhar_lote',
             method: 'GET',
             data: { id_lote: idLote },
             dataType: 'json',

@@ -28,7 +28,11 @@ $idOrgao = Session::getIdOrgao() ?? $usuarioLogado['id_orgao'] ?? null;
 
 // Instanciar modelo e buscar dados
 $usuarioModel = new Usuario();
-$listaUsuarios = $usuarioModel->listarPorOrgao($idOrgao);
+if (($usuarioLogado['nivel_acesso'] ?? '') === 'admin') {
+    $listaUsuarios = $usuarioModel->listarTodos();
+} else {
+    $listaUsuarios = $usuarioModel->listarPorOrgao($idOrgao);
+}
 
 require_once __DIR__ . '/layout/header.php';
 ?>
@@ -144,6 +148,7 @@ require_once __DIR__ . '/layout/header.php';
                     <thead class="bg-light">
                         <tr>
                             <th class="ps-4">Usuário</th>
+                            <th>Órgão</th>
                             <th>Login</th>
                             <th>Nível de Acesso</th>
                             <th>Data Cadastro</th>
@@ -171,6 +176,9 @@ require_once __DIR__ . '/layout/header.php';
                                                 <small class="text-muted">ID: <?php echo $user['id']; ?></small>
                                             </div>
                                         </div>
+                                    </td>
+                                    <td>
+                                        <span class="text-dark small"><i class="bi bi-building me-1"></i><?php echo htmlspecialchars($user['orgao_nome'] ?? 'N/A'); ?></span>
                                     </td>
                                     <td>
                                         <span class="text-secondary"><i class="bi bi-person me-1"></i><?php echo htmlspecialchars($user['login']); ?></span>
@@ -226,6 +234,14 @@ require_once __DIR__ . '/layout/header.php';
                 <form id="formUsuario">
                     <input type="hidden" id="usuarioId" name="id">
                     
+                    <div class="mb-3">
+                        <label for="id_orgao" class="form-label fw-semibold">Órgão Vinculado <span class="text-danger">*</span></label>
+                        <div class="input-group">
+                            <span class="input-group-text bg-light"><i class="bi bi-building"></i></span>
+                            <select class="form-select" id="id_orgao" name="id_orgao" required></select>
+                        </div>
+                    </div>
+
                     <div class="mb-3">
                         <label for="nome" class="form-label fw-semibold">Nome Completo <span class="text-danger">*</span></label>
                         <div class="input-group">
@@ -313,6 +329,7 @@ require_once __DIR__ . '/layout/header.php';
         
         // Botão Salvar
         document.getElementById('btnSalvar').addEventListener('click', salvarUsuario);
+        carregarOrgaosSelect();
     });
 
     function limparFiltros() {
@@ -324,9 +341,30 @@ require_once __DIR__ . '/layout/header.php';
         document.getElementById('filtroNivel').dispatchEvent(event);
     }
 
+    function carregarOrgaosSelect() {
+        $.ajax({
+            url: '/sistema_irrf/public/api/api-orgao.php?action=listar',
+            type: 'GET',
+            dataType: 'json',
+            success: function(res) {
+                if (res.success) {
+                    let options = '<option value="">Selecione um órgão...</option>';
+                    res.dados.forEach(orgao => {
+                        options += `<option value="${orgao.id}">${orgao.nome_oficial}</option>`;
+                    });
+                    $('#id_orgao').html(options);
+                }
+            }
+        });
+    }
+
     function abrirModalNovo() {
         document.getElementById('formUsuario').reset();
         document.getElementById('usuarioId').value = '';
+        // Define o órgão atual como padrão se disponível
+        <?php if ($idOrgao): ?>
+        $('#id_orgao').val('<?php echo $idOrgao; ?>');
+        <?php endif; ?>
         document.getElementById('modalUsuarioTitle').innerHTML = '<i class="bi bi-person-plus me-2"></i>Novo Usuário';
         document.getElementById('senha').setAttribute('required', 'required');
         document.getElementById('senhaHelp').style.display = 'none';
@@ -337,6 +375,7 @@ require_once __DIR__ . '/layout/header.php';
     function editarUsuario(user) {
         // Preencher formulário
         document.getElementById('usuarioId').value = user.id;
+        $('#id_orgao').val(user.id_orgao || ''); // Seleciona o órgão do usuário
         document.getElementById('nome').value = user.nome;
         document.getElementById('login').value = user.login;
         document.getElementById('nivel_acesso').value = user.nivel_acesso;
@@ -357,33 +396,48 @@ require_once __DIR__ . '/layout/header.php';
             return;
         }
 
-        // Simulação de salvamento (aqui entraria a chamada AJAX real)
         const formData = new FormData(form);
-        const data = Object.fromEntries(formData.entries());
         
         // Feedback visual
-        const btn = document.getElementById('btnSalvar');
-        const originalText = btn.innerHTML;
-        btn.disabled = true;
-        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Salvando...';
+        const btn = $('#btnSalvar');
+        const originalText = btn.html();
+        btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-2"></span>Salvando...');
 
-        // TODO: Implementar endpoint real
-        console.log('Dados para salvar:', data);
-        
-        setTimeout(() => {
-            alert('Funcionalidade de salvar será implementada no backend.');
-            btn.disabled = false;
-            btn.innerHTML = originalText;
-            modalUsuario.hide();
-            // location.reload(); // Recarregar após salvar
-        }, 1000);
+        $.ajax({
+            url: '/sistema_irrf/public/api/api-usuario.php?action=salvar',
+            type: 'POST',
+            data: formData,
+            processData: false,
+            contentType: false,
+            success: function(res) {
+                btn.prop('disabled', false).html(originalText);
+                if (res.success) {
+                    modalUsuario.hide();
+                    alert(res.message);
+                    location.reload(); // Recarrega para atualizar a lista
+                } else {
+                    alert('Erro: ' + res.error);
+                }
+            },
+            error: function() {
+                btn.prop('disabled', false).html(originalText);
+                alert('Erro de conexão ao salvar.');
+            }
+        });
     }
 
     function excluirUsuario(id, nome) {
         if (confirm(`Tem certeza que deseja excluir o usuário "${nome}"?\nEsta ação não pode ser desfeita.`)) {
-            // TODO: Implementar endpoint real
-            console.log('Excluir usuário ID:', id);
-            alert('Funcionalidade de exclusão será implementada no backend.');
+            $.post('/sistema_irrf/public/api/api-usuario.php?action=excluir', { id: id }, function(res) {
+                if (res.success) {
+                    alert(res.message);
+                    location.reload();
+                } else {
+                    alert('Erro: ' + res.error);
+                }
+            }, 'json').fail(function() {
+                alert('Erro de conexão ao excluir.');
+            });
         }
     }
 </script>

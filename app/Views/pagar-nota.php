@@ -380,55 +380,134 @@ require_once __DIR__ . '/layout/header.php';
 
 <script>
 $(document).ready(function() {
+    let notaIdParaPagar = null;
+    let notasIdsParaPagar = [];
+
     // ==================== FUNÇÃO SIMPLES PARA PAGAR UMA NOTA ====================
     window.pagarNota = function(idNota) {
-        if (!confirm('Deseja realmente marcar esta nota como paga?')) {
+        notaIdParaPagar = idNota;
+        notasIdsParaPagar = [];
+        
+        // Resetar campos do modal
+        $('#dataPagamento').val(new Date().toISOString().split('T')[0]);
+        $('#observacoesPagamento').val('');
+        
+        // Texto padrão do modal
+        $('#modalConfirmarPagamento .modal-title').html('<i class="bi bi-check-circle me-2"></i> Confirmar Pagamento');
+        $('#modalConfirmarPagamento .alert-info').html('<i class="bi bi-info-circle me-2"></i> <strong>Atenção:</strong> Ao confirmar o pagamento, a nota será marcada como "PAGA" e não poderá ser alterada.');
+        
+        // Abrir modal
+        var modal = new bootstrap.Modal(document.getElementById('modalConfirmarPagamento'));
+        modal.show();
+    };
+
+    // ==================== CONFIRMAR PAGAMENTO NO MODAL (UNIFICADO) ====================
+    $('#btnConfirmarPagamento').click(function() {
+        if (!notaIdParaPagar && notasIdsParaPagar.length === 0) return;
+
+        const dataPagamento = $('#dataPagamento').val();
+        const observacoes = $('#observacoesPagamento').val();
+
+        if (!dataPagamento) {
+            alert('Por favor, informe a data do pagamento.');
             return;
         }
-        
-        // Mostrar loading
-        var btn = $('tr[data-id="' + idNota + '"]').find('.btn-pagar');
-        btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span> Processando...');
-        
-        $.ajax({
-            url: '/sistema_irrf/public/api/pagamento.php?action=registrar',
-            type: 'POST',
-            data: {
-                id_nota: idNota,
-                data_pagamento: new Date().toISOString().split('T')[0],
-                observacoes: 'Pagamento realizado via sistema'
-            },
-            dataType: 'json',
-            success: function(response) {
-                console.log('Resposta do pagamento:', response);
-                
-                if (response.success) {
-                    // Remover linha da tabela
-                    $('tr[data-id="' + idNota + '"]').fadeOut(300, function() {
-                        $(this).remove();
+
+        // Fechar modal
+        const modalEl = document.getElementById('modalConfirmarPagamento');
+        const modal = bootstrap.Modal.getInstance(modalEl);
+        modal.hide();
+
+        if (notaIdParaPagar) {
+            // Mostrar loading
+            var btn = $('tr[data-id="' + notaIdParaPagar + '"]').find('.btn-pagar');
+            var originalHtml = btn.html();
+            btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span> Processando...');
+            
+            $.ajax({
+                url: '/sistema_irrf/public/api/pagamento.php?action=registrar',
+                type: 'POST',
+                data: {
+                    id_nota: notaIdParaPagar,
+                    data_pagamento: dataPagamento,
+                    observacoes: observacoes || 'Pagamento realizado via sistema'
+                },
+                dataType: 'json',
+                success: function(response) {
+                    console.log('Resposta do pagamento:', response);
+                    
+                    if (response.success) {
+                        // Remover linha da tabela
+                        $('tr[data-id="' + notaIdParaPagar + '"]').fadeOut(300, function() {
+                            $(this).remove();
+                            
+                            // Recarregar a página para atualizar estatísticas
+                            setTimeout(function() {
+                                location.reload();
+                            }, 500);
+                        });
                         
-                        // Recarregar a página para atualizar estatísticas
+                        // Mostrar mensagem de sucesso
+                        mostrarAlerta('Nota paga com sucesso! ID: ' + response.id_pagamento, 'success');
+                    } else {
+                        mostrarAlerta('Erro: ' + response.error, 'danger');
+                        btn.prop('disabled', false).html(originalHtml);
+                    }
+                },
+                error: function(jqXHR, textStatus, errorThrown) {
+                    console.error('Erro AJAX:', textStatus, errorThrown);
+                    mostrarAlerta('Erro ao conectar com o servidor. Verifique o console.', 'danger');
+                    btn.prop('disabled', false).html(originalHtml);
+                }
+            });
+        } else if (notasIdsParaPagar.length > 0) {
+            var btn = $('#btnPagarSelecionadas');
+            btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span> Processando...');
+            
+            $.ajax({
+                url: '/sistema_irrf/public/api/pagamento.php?action=registrar_multiplo',
+                type: 'POST',
+                data: {
+                    ids_notas: JSON.stringify(notasIdsParaPagar),
+                    data_pagamento: dataPagamento,
+                    observacoes: observacoes
+                },
+                dataType: 'json',
+                success: function(response) {
+                    console.log('Resposta do pagamento múltiplo:', response);
+                    
+                    if (response.success) {
+                        // Remover linhas das notas pagas
+                        notasIdsParaPagar.forEach(function(id) {
+                            $('tr[data-id="' + id + '"]').fadeOut(300);
+                        });
+                        
                         setTimeout(function() {
                             location.reload();
                         }, 500);
-                    });
+                        
+                        mostrarAlerta(response.message + ' (' + response.total_pagas + ' notas pagas)', 'success');
+                        
+                        // Mostrar erros se houver
+                        if (response.erros && response.erros.length > 0) {
+                            console.log('Erros durante o processamento:', response.erros);
+                        }
+                    } else {
+                        mostrarAlerta('Erro: ' + response.error, 'danger');
+                    }
                     
-                    // Mostrar mensagem de sucesso
-                    mostrarAlerta('Nota paga com sucesso! ID: ' + response.id_pagamento, 'success');
-                } else {
-                    mostrarAlerta('Erro: ' + response.error, 'danger');
-                    btn.prop('disabled', false).html('<i class="bi bi-check-circle me-1"></i> Pagar');
+                    btn.prop('disabled', false).html('<i class="bi bi-wallet2 me-1"></i> Pagar Selecionadas');
+                },
+                error: function(jqXHR, textStatus, errorThrown) {
+                    console.error('Erro AJAX:', textStatus, errorThrown);
+                    mostrarAlerta('Erro ao conectar com o servidor.', 'danger');
+                    btn.prop('disabled', false).html('<i class="bi bi-wallet2 me-1"></i> Pagar Selecionadas');
                 }
-            },
-            error: function(jqXHR, textStatus, errorThrown) {
-                console.error('Erro AJAX:', textStatus, errorThrown);
-                mostrarAlerta('Erro ao conectar com o servidor. Verifique o console.', 'danger');
-                btn.prop('disabled', false).html('<i class="bi bi-check-circle me-1"></i> Pagar');
-            }
-        });
-    };
+            });
+        }
+    });
     
-    // ==================== FUNÇÃO PARA PAGAR MÚLTIPLAS NOTAS ====================
+    // ==================== FUNÇÃO PARA PAGAR MÚLTIPLAS NOTAS (AGORA ABRE MODAL) ====================
     $('#btnPagarSelecionadas').click(function() {
         var selecionadas = [];
         $('.selecionar-nota:checked').each(function() {
@@ -440,53 +519,21 @@ $(document).ready(function() {
             return;
         }
         
-        if (!confirm('Deseja pagar ' + selecionadas.length + ' nota(s) selecionada(s)?')) {
-            return;
-        }
+        // Configura variáveis para pagamento múltiplo
+        notaIdParaPagar = null;
+        notasIdsParaPagar = selecionadas;
         
-        var btn = $(this);
-        btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span> Processando...');
+        // Resetar campos do modal
+        $('#dataPagamento').val(new Date().toISOString().split('T')[0]);
+        $('#observacoesPagamento').val('Pagamento em lote via sistema');
         
-        $.ajax({
-            url: '/sistema_irrf/public/api/pagamento.php?action=registrar_multiplo',
-            type: 'POST',
-            data: {
-                ids_notas: JSON.stringify(selecionadas),
-                data_pagamento: new Date().toISOString().split('T')[0],
-                observacoes: 'Pagamento em lote via sistema'
-            },
-            dataType: 'json',
-            success: function(response) {
-                console.log('Resposta do pagamento múltiplo:', response);
-                
-                if (response.success) {
-                    // Remover linhas das notas pagas
-                    selecionadas.forEach(function(id) {
-                        $('tr[data-id="' + id + '"]').fadeOut(300);
-                    });
-                    
-                    setTimeout(function() {
-                        location.reload();
-                    }, 500);
-                    
-                    mostrarAlerta(response.message + ' (' + response.total_pagas + ' notas pagas)', 'success');
-                    
-                    // Mostrar erros se houver
-                    if (response.erros && response.erros.length > 0) {
-                        console.log('Erros durante o processamento:', response.erros);
-                    }
-                } else {
-                    mostrarAlerta('Erro: ' + response.error, 'danger');
-                }
-                
-                btn.prop('disabled', false).html('<i class="bi bi-wallet2 me-1"></i> Pagar Selecionadas');
-            },
-            error: function(jqXHR, textStatus, errorThrown) {
-                console.error('Erro AJAX:', textStatus, errorThrown);
-                mostrarAlerta('Erro ao conectar com o servidor.', 'danger');
-                btn.prop('disabled', false).html('<i class="bi bi-wallet2 me-1"></i> Pagar Selecionadas');
-            }
-        });
+        // Texto específico para múltiplo
+        $('#modalConfirmarPagamento .modal-title').html('<i class="bi bi-wallet2 me-2"></i> Pagar ' + selecionadas.length + ' Notas');
+        $('#modalConfirmarPagamento .alert-info').html('<i class="bi bi-info-circle me-2"></i> <strong>Atenção:</strong> A data selecionada abaixo será aplicada a <strong>todos os ' + selecionadas.length + ' registros</strong> selecionados.');
+        
+        // Abrir modal
+        var modal = new bootstrap.Modal(document.getElementById('modalConfirmarPagamento'));
+        modal.show();
     });
     
     // ==================== FUNÇÕES AUXILIARES ====================

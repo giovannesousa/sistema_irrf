@@ -282,6 +282,9 @@ require_once __DIR__ . '/layout/header.php';
             </div>
         </div>
 
+        <!-- Container para Alertas Dinâmicos -->
+        <div id="alertContainer" class="mb-4"></div>
+
         <!-- Alertas de Informação -->
         <div class="alert alert-info-custom alert-custom mb-4">
             <div class="d-flex align-items-center">
@@ -492,6 +495,16 @@ require_once __DIR__ . '/layout/header.php';
             <p class="mb-2">Este sistema realiza o cálculo do Imposto de Renda Retido na Fonte (IRRF) conforme estabelecido na <strong>INSTRUÇÃO NORMATIVA RFB Nº 2.145, DE 31 DE MAIO DE 2023</strong>.</p>
             <hr>
             <p class="mb-0"><small>Os valores calculados são para fins informativos. Consulte sempre um contador para validação dos cálculos.</small></p>
+        </div>
+    </div>
+
+    <!-- Loading Overlay (padrão Reinf) -->
+    <div id="loadingOverlay"
+        class="d-none position-fixed top-0 start-0 w-100 h-100 bg-white bg-opacity-75 d-flex justify-content-center align-items-center"
+        style="z-index: 9999;">
+        <div class="text-center">
+            <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;"></div>
+            <p class="mt-2 fw-bold text-primary" id="loadingMessage">Processando...</p>
         </div>
     </div>
 
@@ -711,30 +724,41 @@ require_once __DIR__ . '/layout/header.php';
             });
         }
 
-        // Mostrar alerta personalizado
-        function showAlert(message, type) {
+        // Função para controlar o loading overlay
+        function toggleLoading(show, message = 'Processando...') {
+            $('#loadingMessage').text(message);
+            if (show) {
+                $('#loadingOverlay').removeClass('d-none');
+            } else {
+                $('#loadingOverlay').addClass('d-none');
+            }
+        }
+
+        // Mostrar alerta personalizado no container dedicado
+        function showAlert(message, type, clear = true) {
+            // Limpa alertas antigos
+            if (clear) {
+                $('#alertContainer').empty();
+            }
+
             var alertClass = 'alert-' + type;
             var icon = '';
             
             switch(type) {
                 case 'success': icon = '<i class="bi bi-check-circle-fill me-2"></i>'; break;
                 case 'danger': icon = '<i class="bi bi-exclamation-circle-fill me-2"></i>'; break;
-                case 'warning': icon = '<i class="bi bi-exclamation-triangle-fill me-2"></i>'; break;
-                case 'info': icon = '<i class="bi bi-info-circle-fill me-2"></i>'; break;
+                default: icon = '<i class="bi bi-info-circle-fill me-2"></i>';
             }
             
             var alertHtml = '<div class="alert ' + alertClass + ' alert-dismissible fade show" role="alert">' +
                             icon + message +
                             '<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>' +
                             '</div>';
-            
-            // Inserir após o título principal
-            $('.main-container > .d-flex').after(alertHtml);
-            
-            // Remover automaticamente após 5 segundos
-            setTimeout(function() {
-                $('.alert').alert('close');
-            }, 5000);
+
+            $('#alertContainer').append(alertHtml);
+
+            // Rola a página para o topo para que o usuário veja a mensagem
+            $('html, body').animate({ scrollTop: 0 }, 'slow');
         }
 
         // Limpar campos do fornecedor
@@ -751,16 +775,19 @@ require_once __DIR__ . '/layout/header.php';
         }
 
         // Limpar formulário completo
-        $('#btn_limpar').click(function() {
-            if (confirm('Tem certeza que deseja limpar todo o formulário?')) {
-                $('#cnpj_busca').val('').removeClass('is-invalid');
-                limparCamposFornecedor();
-                $('#valor_nota').val('');
-                $('#aliq_retencao').val('');
-                $('#descricao_servico').val('');
-                $('#numero_nota').val('');
-                showAlert('Formulário limpo com sucesso!', 'info');
+        $('#btn_limpar').on('click', function(e, data) {
+            $('#cnpj_busca').val('').removeClass('is-invalid');
+            limparCamposFornecedor();
+            $('#valor_nota').val('');
+            $('#aliq_retencao').val('');
+            $('#descricao_servico').val('');
+            $('#numero_nota').val('');
+            
+            var clearAlerts = true;
+            if (data && data.keepAlerts) {
+                clearAlerts = false;
             }
+            showAlert('Formulário limpo com sucesso!', 'info', clearAlerts);
         });
 
         // Botão Calcular
@@ -806,7 +833,7 @@ $('#btn_salvar').click(function() {
     var valorRetencao = (valorBruto * aliq) / 100;
     var valorLiquido = valorBruto - valorRetencao;
     
-    $('#loadingSpinner').show();
+    toggleLoading(true, 'Salvando nota...');
     
     // Preparar dados para salvar
     var dadosNota = {
@@ -831,8 +858,7 @@ $('#btn_salvar').click(function() {
         data: dadosNota,
         dataType: 'json',
         success: function(res) {
-            $('#loadingSpinner').hide();
-            console.log('Resposta:', res);
+            toggleLoading(false);
             
             if (res.success) {
                 showAlert('Nota salva com sucesso! ID: ' + res.id_nota + ' - Número: ' + res.numero_nota, 'success');
@@ -842,9 +868,8 @@ $('#btn_salvar').click(function() {
                 
                 // Opcional: resetar formulário após sucesso
                 setTimeout(function() {
-                    if (confirm('Nota salva com sucesso! Deseja limpar o formulário para criar uma nova nota?')) {
-                        $('#btn_limpar').click();
-                    }
+                    // Limpa o formulário automaticamente para a próxima nota
+                    $('#btn_limpar').trigger('click', [{ keepAlerts: true }]);
                 }, 2000);
                 
             } else {
@@ -852,8 +877,8 @@ $('#btn_salvar').click(function() {
             }
         },
         error: function(jqXHR, textStatus, errorThrown) {
-            $('#loadingSpinner').hide();
-            console.error('Erro AJAX:', {
+            toggleLoading(false);
+            console.error('Erro AJAX ao salvar:', {
                 status: jqXHR.status,
                 statusText: jqXHR.statusText,
                 responseText: jqXHR.responseText,
@@ -882,7 +907,7 @@ $('#btn_salvar').click(function() {
 
         // Botões flutuantes
         $('#btnAjuda').click(function() {
-            alert('Ajuda do Sistema:\n\n1. Digite o CNPJ do fornecedor\n2. Selecione a natureza do serviço\n3. Informe o valor da nota\n4. Clique em Calcular para ver o resultado\n5. Salve a nota quando estiver correto');
+            showAlert('<strong>Ajuda:</strong><br>1. Digite o CNPJ do fornecedor.<br>2. Selecione a natureza do serviço.<br>3. Informe o valor da nota.<br>4. Clique em "Calcular".<br>5. Clique em "Salvar Nota".', 'info');
         });
         
         $('#btnNovo').click(function() {
@@ -890,7 +915,7 @@ $('#btn_salvar').click(function() {
         });
         
         $('#btnHistorico').click(function() {
-            alert('Funcionalidade de histórico em desenvolvimento...');
+            showAlert('Funcionalidade de histórico em desenvolvimento...', 'info');
         });
 
         // Eventos para cálculo automático

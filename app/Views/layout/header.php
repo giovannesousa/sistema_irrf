@@ -97,7 +97,7 @@ $usuario = $_SESSION['usuario'] ?? null;
             margin-bottom: 5px;
         }
 
-        .nav-link {
+        .sidebar .nav-link {
             color: rgba(255, 255, 255, 0.8);
             padding: 12px 20px;
             display: flex;
@@ -107,19 +107,19 @@ $usuario = $_SESSION['usuario'] ?? null;
             text-decoration: none;
         }
 
-        .nav-link:hover,
-        .nav-link.active {
+        .sidebar .nav-link:hover,
+        .sidebar .nav-link.active {
             color: white;
             background: rgba(255, 255, 255, 0.1);
             border-left: 4px solid var(--primary-color);
         }
 
-        .nav-link i {
+        .sidebar .nav-link i {
             font-size: 1.1rem;
             width: 20px;
         }
 
-        .nav-link .badge {
+        .sidebar .nav-link .badge {
             margin-left: auto;
         }
 
@@ -320,8 +320,8 @@ $usuario = $_SESSION['usuario'] ?? null;
 
                 <div class="nav-item">
                     <a class="nav-link <?php echo ($pagina_atual == 'r1000') ? 'active' : ''; ?>"
-                        href="/sistema_irrf/public/r1000.php">
-                        <i class="fas fa-building"></i> 
+                        href="/sistema_irrf/public/enviar-r1000.php">
+                        <i class="bi bi-building-fill-up"></i> 
                         <span>R-1000 - Cadastro</span>
                     </a>
                 </div>
@@ -348,6 +348,13 @@ $usuario = $_SESSION['usuario'] ?? null;
                             href="/sistema_irrf/public/configuracoes.php">
                             <i class="bi bi-gear"></i>
                             <span>Configurações</span>
+                        </a>
+                    </div>
+
+                    <div class="nav-item">
+                        <a class="nav-link <?php echo ($pagina_atual == 'orgaos') ? 'active' : ''; ?>" href="/sistema_irrf/public/geren-orgaos.php">
+                            <i class="bi bi-building-gear"></i>
+                            <span>Gerenciar Órgãos</span>
                         </a>
                     </div>
 

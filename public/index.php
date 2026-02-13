@@ -88,6 +88,7 @@ $routes = [
     'configuracoes' => 'configuracoes.php',
     'usuarios' => 'usuarios.php',
     'orgao' => 'orgao.php',
+    'orgaos' => 'orgaos.php', // Nova rota para lista de órgãos
     'print-nota' => 'print-nota.php',
     'login' => 'auth/login.php'
 ];

@@ -3,7 +3,7 @@
 
 class R4020Builder {
 
-    public function build(array $dadosOrgao, array $dadosFornecedor, array $listaPagamentos) {
+    public function build(array $dadosOrgao, array $dadosFornecedor, array $listaPagamentos, int $indRetif = 1, ?string $nrRecibo = null) {
         $dom = new DOMDocument('1.0', 'UTF-8');
         $dom->preserveWhiteSpace = false;
         $dom->formatOutput = false;
@@ -33,7 +33,12 @@ class R4020Builder {
 
         // ideEvento
         $ideEvento = $dom->createElementNS($ns, 'ideEvento');
-        $ideEvento->appendChild($dom->createElementNS($ns, 'indRetif', '1'));
+        $ideEvento->appendChild($dom->createElementNS($ns, 'indRetif', (string)$indRetif));
+        
+        if ($indRetif == 2 && !empty($nrRecibo)) {
+            $ideEvento->appendChild($dom->createElementNS($ns, 'nrRecibo', $nrRecibo));
+        }
+
         $ideEvento->appendChild($dom->createElementNS($ns, 'perApur', $listaPagamentos[0]['per_apuracao']));
         $ideEvento->appendChild($dom->createElementNS($ns, 'tpAmb', $dadosOrgao['ambiente']));
         $ideEvento->appendChild($dom->createElementNS($ns, 'procEmi', '1')); 
@@ -60,37 +65,48 @@ class R4020Builder {
         $ideBenef->appendChild($dom->createElementNS($ns, 'cnpjBenef', $cnpjBenef));
         $ideEstab->appendChild($ideBenef);
 
-        // idePgto
-        $idePgto = $dom->createElementNS($ns, 'idePgto');
+        // --- INÍCIO DA NOVA LÓGICA DE AGRUPAMENTO ---
         
-        // Natureza com 5 dígitos (Padrão validado no XSD anterior)
-        $codNat = preg_replace('/[^0-9]/', '', $listaPagamentos[0]['nat_rendimento'] ?? '10001');
-        $natRend = str_pad($codNat, 5, '0', STR_PAD_LEFT); 
-        
-        $idePgto->appendChild($dom->createElementNS($ns, 'natRend', $natRend));
-
+        // 1. Agrupa os pagamentos pela Natureza de Rendimento
+        $pagamentosAgrupados = [];
         foreach ($listaPagamentos as $pgto) {
-            $infoPgto = $dom->createElementNS($ns, 'infoPgto');
+            // Se vier nulo, assume 17099 (Demais Serviços) como fallback seguro
+            $codNat = preg_replace('/[^0-9]/', '', $pgto['nat_rendimento'] ?? '17099');
+            $natRend = str_pad($codNat, 5, '0', STR_PAD_LEFT); 
             
-            $infoPgto->appendChild($dom->createElementNS($ns, 'dtFG', $pgto['data_pagamento'])); 
-            
-            // Valores com vírgula
-            $vlrBruto = number_format((float)$pgto['valor_bruto'], 2, ',', '');
-            $infoPgto->appendChild($dom->createElementNS($ns, 'vlrBruto', $vlrBruto));
-            
-            // Retenções
-            $retencoes = $dom->createElementNS($ns, 'retencoes');
-            $vlrBaseIR = number_format((float)$pgto['valor_base_ir'], 2, ',', '');
-            $vlrIR = number_format((float)$pgto['valor_ir'], 2, ',', '');
-
-            $retencoes->appendChild($dom->createElementNS($ns, 'vlrBaseIR', $vlrBaseIR));
-            $retencoes->appendChild($dom->createElementNS($ns, 'vlrIR', $vlrIR));
-            
-            $infoPgto->appendChild($retencoes);
-            $idePgto->appendChild($infoPgto);
+            $pagamentosAgrupados[$natRend][] = $pgto;
         }
 
-        $ideBenef->appendChild($idePgto);
+        // 2. Cria um bloco <idePgto> para CADA natureza diferente encontrada no mês
+        foreach ($pagamentosAgrupados as $natRend => $pagamentosDaNatureza) {
+            
+            $idePgto = $dom->createElementNS($ns, 'idePgto');
+            $idePgto->appendChild($dom->createElementNS($ns, 'natRend', $natRend));
+
+            // 3. Adiciona as notas (infoPgto) dentro do seu respectivo grupo
+            foreach ($pagamentosDaNatureza as $pgto) {
+                $infoPgto = $dom->createElementNS($ns, 'infoPgto');
+                
+                $infoPgto->appendChild($dom->createElementNS($ns, 'dtFG', $pgto['data_pagamento'])); 
+                
+                // Valores Monetários
+                $vlrBruto = number_format((float)$pgto['valor_bruto'], 2, ',', '');
+                $infoPgto->appendChild($dom->createElementNS($ns, 'vlrBruto', $vlrBruto));
+                
+                // Retenções
+                $retencoes = $dom->createElementNS($ns, 'retencoes');
+                $vlrBaseIR = number_format((float)$pgto['valor_base_ir'], 2, ',', '');
+                $vlrIR = number_format((float)$pgto['valor_ir'], 2, ',', '');
+
+                $retencoes->appendChild($dom->createElementNS($ns, 'vlrBaseIR', $vlrBaseIR));
+                $retencoes->appendChild($dom->createElementNS($ns, 'vlrIR', $vlrIR));
+                
+                $infoPgto->appendChild($retencoes);
+                $idePgto->appendChild($infoPgto);
+            }
+
+            $ideBenef->appendChild($idePgto);
+        }
 
         return [
             'xml' => $dom->saveXML(),

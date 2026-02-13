@@ -15,4 +15,4 @@ if (!isset($_SESSION['logado']) || $_SESSION['logado'] !== true) {
 }
 
 // Inclui a view
-require_once __DIR__ . '/../app/Views/reinf/r1000.php';
+require_once __DIR__ . '/../app/Views/reinf/enviar-r1000.php';

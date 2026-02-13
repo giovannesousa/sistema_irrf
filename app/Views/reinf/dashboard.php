@@ -120,6 +120,35 @@ require_once __DIR__ . '/../layout/header.php';
 <script>
     $(document).ready(function () {
         carregarDados();
+        $(document).ready(function() {
+    // Verifica status do R-1000 ao carregar dashboard
+    $.ajax({
+        url: '/public/api/r1000.php?action=verificar_status',
+        type: 'GET',
+        dataType: 'json',
+        success: function(response) {
+            if (!response.tem_cadastro) {
+                // Mostra alerta no topo do dashboard
+                $('#alerta-r1000').html(`
+                    <div class="alert alert-warning alert-dismissible fade show" role="alert">
+                        <strong><i class="fas fa-exclamation-triangle"></i> Atenção!</strong>
+                        O órgão ainda não possui cadastro no ambiente da Receita Federal.
+                        <a href="/public/reinf/r1000.php" class="alert-link">Clique aqui para enviar o R-1000</a>.
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                `);
+                
+                // Desabilita botões de envio
+                $('#btnEnviarLote').prop('disabled', true);
+                $('#btnValidarLote').prop('disabled', true);
+            } else {
+                $('#btnEnviarLote').prop('disabled', false);
+                $('#btnValidarLote').prop('disabled', false);
+            }
+        }
+    });
+});
+
     });
 
     // --- FUNÇÕES PRINCIPAIS ---
@@ -467,5 +496,7 @@ require_once __DIR__ . '/../layout/header.php';
         return v.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, "$1.$2.$3/$4-$5");
     }
 </script>
+
+<div id="alerta-r1000"></div>
 
 <?php require_once __DIR__ . '/../layout/footer.php'; ?>

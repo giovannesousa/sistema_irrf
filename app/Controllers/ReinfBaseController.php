@@ -1,10 +1,10 @@
 <?php
 // app/Controllers/Reinf/ReinfBaseController.php
 
-require_once __DIR__ . '/../../Core/Database.php';
-require_once __DIR__ . '/../../Services/Reinf/ReinfConfig.php';
-require_once __DIR__ . '/../../Services/Reinf/ReinfSigner.php';
-require_once __DIR__ . '/../../Services/Reinf/ReinfClient.php';
+require_once __DIR__ . '/../Core/Database.php';
+require_once __DIR__ . '/../Services/Reinf/ReinfConfig.php';
+require_once __DIR__ . '/../Services/Reinf/ReinfSigner.php';
+require_once __DIR__ . '/../Services/Reinf/ReinfClient.php';
 
 class ReinfBaseController {
     // Mudamos de private para protected para que os filhos (4020 e 1000) possam usar

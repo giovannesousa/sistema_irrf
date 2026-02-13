@@ -319,6 +319,14 @@ $usuario = $_SESSION['usuario'] ?? null;
                 </div>
 
                 <div class="nav-item">
+                    <a class="nav-link <?php echo ($pagina_atual == 'r1000') ? 'active' : ''; ?>"
+                        href="/sistema_irrf/public/r1000.php">
+                        <i class="fas fa-building"></i> 
+                        <span>R-1000 - Cadastro</span>
+                    </a>
+                </div>
+
+                <div class="nav-item">
                     <a class="nav-link <?php echo ($pagina_atual == 'relatorios') ? 'active' : ''; ?>"
                         href="/sistema_irrf/public/relatorios.php">
                         <i class="bi bi-graph-up"></i>

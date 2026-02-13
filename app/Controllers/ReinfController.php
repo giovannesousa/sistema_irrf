@@ -259,7 +259,7 @@ class ReinfController
     }
 
     public function enviarLote() {
-        try {
+        try {            
             $input = json_decode(file_get_contents('php://input'), true);
             $periodo = $input['periodo'] ?? null;
             $idsFornecedores = $input['fornecedores'] ?? [];

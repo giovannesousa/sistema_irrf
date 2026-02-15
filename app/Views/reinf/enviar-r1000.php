@@ -114,6 +114,7 @@ require_once __DIR__ . '/../layout/header.php';
                             <div class="col-md-4">
                                 <label class="form-label fw-bold text-secondary small mb-1">É Ente Federativo?</label>
                                 <select class="form-select" id="ide_efr">
+                                    <option value="">Não informar (Dispensado)</option>
                                     <option value="S">Sim</option>
                                     <option value="N">Não</option>
                                 </select>
@@ -179,6 +180,12 @@ require_once __DIR__ . '/../layout/header.php';
                                     </button>
                                     <button type="button" class="btn btn-outline-danger ms-2" onclick="excluirR1000()">
                                         <i class="fas fa-trash-alt me-1"></i>Resetar Base (Excluir)
+                                    </button>
+                                    <button type="button" class="btn btn-danger ms-2" onclick="resetarLocal()" title="Limpa apenas o banco de dados local, ignorando a Receita">
+                                        <i class="fas fa-bomb me-1"></i>Forçar Reset Local
+                                    </button>
+                                    <button type="button" class="btn btn-dark ms-2" onclick="limparEventosReceita()" title="Envia exclusão para todos os eventos R-4020 ativos na Receita">
+                                        <i class="fas fa-eraser me-1"></i>Limpar Eventos (Receita)
                                     </button>
                                 </div>
                             </div>
@@ -366,6 +373,49 @@ require_once __DIR__ . '/../layout/header.php';
                 } else {
                     $('#loadingOverlay').addClass('d-none');
                     alert('Erro ao excluir: ' + res.error);
+                }
+            }
+        });
+    }
+
+    function resetarLocal() {
+        if(!confirm('ATENÇÃO: Esta ação apagará TODOS os registros locais de envio (Lotes, Eventos, Recibos) deste órgão.\n\nIsso NÃO envia nada para a Receita Federal, apenas limpa seu banco de dados local para recomeçar.\n\nDeseja continuar?')) return;
+        
+        if(!confirm('Tem certeza absoluta? As notas voltarão para a lista de pendências e o histórico será perdido.')) return;
+
+        $('#loadingOverlay').removeClass('d-none');
+        $('#loadingMessage').text('Limpando base de dados...');
+
+        $.ajax({
+            url: '/sistema_irrf/public/api/api-r1000.php?action=resetar_local',
+            type: 'POST',
+            success: function(res) {
+                $('#loadingOverlay').addClass('d-none');
+                if(res.success) {
+                    alert(res.message);
+                    carregarDados();
+                } else {
+                    alert('Erro ao resetar: ' + res.error);
+                }
+            }
+        });
+    }
+
+    function limparEventosReceita() {
+        if(!confirm('ATENÇÃO: Esta ação enviará eventos de EXCLUSÃO (R-9000) para TODOS os eventos R-4020 ativos deste órgão na Receita Federal.\n\nIsso é necessário para permitir a exclusão do cadastro R-1000.\n\nDeseja continuar?')) return;
+
+        $('#loadingOverlay').removeClass('d-none');
+        $('#loadingMessage').text('Enviando exclusões em massa...');
+
+        $.ajax({
+            url: '/sistema_irrf/public/api/api-r1000.php?action=limpar_eventos',
+            type: 'POST',
+            success: function(res) {
+                $('#loadingOverlay').addClass('d-none');
+                if(res.success) {
+                    alert(res.message);
+                } else {
+                    alert('Erro/Aviso: ' + res.error);
                 }
             }
         });

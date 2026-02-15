@@ -34,6 +34,9 @@ try {
         case 'excluir':
             $controller->excluir();
             break;
+        case 'selecionar': // NOVO: Troca de contexto para admin
+            $controller->selecionar();
+            break;
         default:
             echo json_encode(['success' => false, 'error' => 'Ação inválida']);
     }

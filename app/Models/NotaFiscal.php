@@ -16,10 +16,10 @@ class NotaFiscal {
             $sql = "INSERT INTO {$this->table} 
                     (id_orgao, id_fornecedor, id_natureza_servico, numero_nota, 
                      data_emissao, valor_bruto, aliquota_aplicada, valor_irrf_retido, 
-                     valor_iss_retido, valor_liquido, descricao_servico, created_at, updated_at) 
+                     valor_iss_retido, valor_liquido, descricao_servico, caminho_anexo, created_at, updated_at) 
                     VALUES (:id_orgao, :id_fornecedor, :id_natureza_servico, :numero_nota, 
                             :data_emissao, :valor_bruto, :aliquota_aplicada, :valor_irrf_retido, 
-                            :valor_iss_retido, :valor_liquido, :descricao_servico, NOW(), NOW())";
+                            :valor_iss_retido, :valor_liquido, :descricao_servico, :caminho_anexo, NOW(), NOW())";
             
             $stmt = $this->db->prepare($sql);
             
@@ -34,7 +34,8 @@ class NotaFiscal {
                 ':valor_irrf_retido' => $dados['valor_irrf_retido'],
                 ':valor_iss_retido' => $dados['valor_iss_retido'] ?? 0.00,
                 ':valor_liquido' => $dados['valor_liquido'],
-                ':descricao_servico' => $dados['descricao_servico']
+                ':descricao_servico' => $dados['descricao_servico'],
+                ':caminho_anexo' => $dados['caminho_anexo'] ?? null
             ]);
             
             return $this->db->lastInsertId();

@@ -126,6 +126,8 @@ require_once __DIR__ . '/../layout/header.php';
                         <table class="table table-hover align-middle">
                             <thead class="bg-light">
                                 <tr>
+                                    <th>ID</th>
+                                    <th>Lote</th>
                                     <th>Data</th>
                                     <th>Evento</th>
                                     <th>Fornecedor</th>
@@ -158,6 +160,8 @@ require_once __DIR__ . '/../layout/header.php';
                     <table class="table table-bordered table-sm align-middle">
                         <thead class="table-light">
                             <tr>
+                                <th>ID</th>
+                                <th>Lote</th>
                                 <th>Fornecedor</th>
                                 <th>CNPJ</th>
                                 <th>Status Evento</th>
@@ -272,7 +276,7 @@ require_once __DIR__ . '/../layout/header.php';
     function renderEventos(lista) {
         let html = '';
         if (!lista || lista.length === 0) {
-            html = '<tr><td colspan="6" class="text-center text-muted py-4">Nenhum evento encontrado.</td></tr>';
+            html = '<tr><td colspan="8" class="text-center text-muted py-4">Nenhum evento encontrado.</td></tr>';
         } else {
             lista.forEach(e => {
                 let badge = '';
@@ -295,6 +299,8 @@ require_once __DIR__ . '/../layout/header.php';
 
                 html += `
                     <tr>
+                        <td>${e.id}</td>
+                        <td>${e.id_lote}</td>
                         <td>${new Date(e.created_at).toLocaleString('pt-BR')}</td>
                         <td>${e.tipo_evento}</td>
                         <td>
@@ -454,6 +460,8 @@ require_once __DIR__ . '/../layout/header.php';
 
                     html += `
                         <tr>
+                            <td>${evt.id}</td>
+                            <td>${evt.id_lote}</td>
                             <td>${evt.razao_social}</td>
                             <td>${evt.cnpj}</td>
                             <td><span class="badge bg-${statusColor}">${evt.status}</span></td>
@@ -469,7 +477,7 @@ require_once __DIR__ . '/../layout/header.php';
                 });
                 $('#listaEventosDetalhe').html(html);
             } else {
-                $('#listaEventosDetalhe').html(`<tr><td colspan="6" class="text-danger">${res.error}</td></tr>`);
+                $('#listaEventosDetalhe').html(`<tr><td colspan="8" class="text-danger">${res.error}</td></tr>`);
             }
         }, 'json');
     }

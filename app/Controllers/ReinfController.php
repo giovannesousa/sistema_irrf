@@ -6,6 +6,7 @@ require_once __DIR__ . '/../Core/Session.php';
 require_once __DIR__ . '/../Services/Reinf/ReinfConfig.php';
 require_once __DIR__ . '/../Services/Reinf/R4020Builder.php';
 require_once __DIR__ . '/../Services/Reinf/R9000Builder.php';
+require_once __DIR__ . '/../Services/Reinf/R4099Builder.php';
 require_once __DIR__ . '/../Services/Reinf/ReinfSigner.php';
 require_once __DIR__ . '/../Services/Reinf/ReinfClient.php';
 
@@ -45,6 +46,15 @@ switch ($action) {
         break;
     case 'excluir_evento': // NOVO - Exclusão R-9000
         $controller->excluirEvento();
+        break;
+    case 'enviar_fechamento': // NOVO - R-4099
+        $controller->enviarFechamento();
+        break;
+    case 'buscar_extrato_fechamento': // NOVO - Visualização R-9015
+        $controller->buscarExtratoFechamento();
+        break;
+    case 'recuperar_recibos': // NOVO - Utilitário para listar recibos
+        $controller->recuperarRecibos4020();
         break;
     default:
         echo json_encode(['success' => false, 'error' => 'Ação inválida']);
@@ -90,14 +100,21 @@ class ReinfController
             $sql = "
                 SELECT 
                     e.id,
+                    e.id_lote,
                     e.status,
                     e.numero_recibo,
                     e.mensagem_erro,
                     e.id_evento_xml,
-                    f.razao_social,
+                    COALESCE(f.razao_social, CASE 
+                        WHEN e.tipo_evento = 'R-4099' AND e.xml_assinado LIKE '%<fechRet>1</fechRet>%' THEN 'Reabertura de Período'
+                        WHEN e.tipo_evento = 'R-4099' AND e.xml_assinado LIKE '%<fechRet>0</fechRet>%' THEN 'Fechamento de Período'
+                        WHEN e.tipo_evento LIKE '%Reabertura%' OR e.tipo_evento LIKE '%-Reab%' THEN 'Reabertura de Período'
+                        WHEN e.tipo_evento LIKE 'R-4099%' THEN 'Fechamento de Período'
+                        ELSE 'Sistema' 
+                    END) as razao_social,
                     f.cnpj
                 FROM reinf_eventos e
-                JOIN fornecedores f ON e.id_fornecedor = f.id
+                LEFT JOIN fornecedores f ON e.id_fornecedor = f.id
                 WHERE e.id_lote = :id_lote
             ";
 
@@ -174,6 +191,11 @@ class ReinfController
                 $sqlUpdEvento = "UPDATE reinf_eventos SET status = ?, numero_recibo = ?, mensagem_erro = ? WHERE id_lote = ? AND id_evento_xml = ?";
                 $stmtUpdEvento = $this->db->prepare($sqlUpdEvento);
 
+                // Carrega XML de envio para verificar retificações e erros específicos
+                $domEnvio = new DOMDocument();
+                $domEnvio->loadXML($lote['xml_envio']);
+                $xpathEnvio = new DOMXPath($domEnvio);
+
                 foreach ($eventosNodes as $eventoNode) {
                     $idEventoXml = $eventoNode->getAttribute('Id');
                     if (empty($idEventoXml))
@@ -196,6 +218,20 @@ class ReinfController
                         }
                         if ($nodeRecibo)
                             $nrRecibo = $nodeRecibo->nodeValue;
+                        
+                        // [SISTEMA] Verifica se foi uma retificação (indRetif=2)
+                        // Se sim, marca o evento anterior (recibo informado) como 'retificado' para sair dos totais
+                        $eventoEnvioNode = $xpathEnvio->query("//*[local-name()='evento'][@Id='$idEventoXml']")->item(0);
+                        if ($eventoEnvioNode) {
+                            $indRetifNode = $xpathEnvio->query(".//*[local-name()='indRetif']", $eventoEnvioNode)->item(0);
+                            if ($indRetifNode && $indRetifNode->nodeValue == '2') {
+                                $nrReciboAntNode = $xpathEnvio->query(".//*[local-name()='nrRecibo']", $eventoEnvioNode)->item(0);
+                                if ($nrReciboAntNode) {
+                                    $reciboAnterior = $nrReciboAntNode->nodeValue;
+                                    $this->db->prepare("UPDATE reinf_eventos SET status = 'retificado' WHERE numero_recibo = ?")->execute([$reciboAnterior]);
+                                }
+                            }
+                        }
                     } else {
                         // Captura ERRO detalhado
                         // Procura <codResp> e <dscResp>
@@ -206,30 +242,6 @@ class ReinfController
                         $descErro = $nodeDscResp ? $nodeDscResp->nodeValue : "Erro desconhecido";
 
                         $msgErro = "$descErro (Cód: $codigoErro)";
-
-                        // --- AUTOCORREÇÃO DE STATUS (ERRO MS1022) ---
-                        // Se o erro for "Retificação não permitida... evento não válido (excluído)",
-                        // significa que nosso banco acha que está ativo, mas na Receita já foi excluído.
-                        // Vamos marcar como excluído localmente para permitir novo envio como Inclusão.
-                        if ($codigoErro == 'MS1022') {
-                            // Precisamos descobrir qual recibo tentamos retificar.
-                            // Lemos o XML de envio deste lote para achar o nrRecibo usado.
-                            $domEnvio = new DOMDocument();
-                            $domEnvio->loadXML($lote['xml_envio']);
-                            $xpathEnvio = new DOMXPath($domEnvio);
-                            
-                            // Busca o evento com o mesmo ID do retorno
-                            $eventoEnvio = $xpathEnvio->query("//*[local-name()='evento'][@Id='$idEventoXml']")->item(0);
-                            if ($eventoEnvio) {
-                                $nrReciboTentado = $xpathEnvio->query(".//*[local-name()='nrRecibo']", $eventoEnvio)->item(0);
-                                if ($nrReciboTentado) {
-                                    $recibo = $nrReciboTentado->nodeValue;
-                                    // Atualiza o evento original para excluído
-                                    $this->db->prepare("UPDATE reinf_eventos SET status = 'excluido' WHERE numero_recibo = ?")->execute([$recibo]);
-                                    $msgErro .= " [SISTEMA: Evento original marcado como excluído automaticamente. Tente enviar novamente.]";
-                                }
-                            }
-                        }
                     }
 
                     if (!empty($idEventoXml)) {
@@ -240,18 +252,15 @@ class ReinfController
                 // --- PROCESSAMENTO DE SUCESSO DE EXCLUSÃO (R-9000) ---
                 // Se este lote contém eventos de exclusão, precisamos marcar os eventos originais como excluídos
                 if (strpos($lote['xml_envio'], 'evtExclusao') !== false) {
-                    $domEnvio = new DOMDocument();
-                    $domEnvio->loadXML($lote['xml_envio']);
-                    $xpathEnvio = new DOMXPath($domEnvio);
-                    
                     $exclusoes = $xpathEnvio->query("//*[local-name()='evtExclusao']");
                     foreach ($exclusoes as $exclusao) {
                         $idExclusao = $exclusao->getAttribute('id');
-                        // Verifica se este ID teve sucesso no retorno atual
+                        
+                        // 1. Verifica SUCESSO (2001)
                         $sucessoNode = $xpath->query("//*[local-name()='evento'][@Id='$idExclusao']//*[local-name()='cdRetorno'][text()='2001']")->item(0);
                         
                         if ($sucessoNode) {
-                            // Pega o recibo que foi excluído
+                            // Pega o recibo que foi excluído (ou tentado)
                             $nrRecEvt = $xpathEnvio->query(".//*[local-name()='nrRecEvt']", $exclusao)->item(0);
                             if ($nrRecEvt) {
                                 $reciboExcluido = $nrRecEvt->nodeValue;
@@ -315,11 +324,21 @@ class ReinfController
 
             $sqlLotes = "
                 SELECT l.*, 
-                       (SELECT e.tipo_evento FROM reinf_eventos e WHERE e.id_lote = l.id LIMIT 1) as tipo_evento
+                       (SELECT 
+                            CASE 
+                                WHEN e.tipo_evento = 'R-4099' AND e.xml_assinado LIKE '%<fechRet>1</fechRet>%' THEN 'R-4099-Reabertura'
+                                ELSE e.tipo_evento 
+                            END
+                        FROM reinf_eventos e WHERE e.id_lote = l.id LIMIT 1) as tipo_evento
                 FROM reinf_lotes l 
                 WHERE l.id_orgao = :id_orgao 
+                AND EXISTS (
+                    SELECT 1 FROM reinf_eventos e 
+                    WHERE e.id_lote = l.id 
+                    AND (e.tipo_evento = 'R-4020' OR e.tipo_evento = 'R-9000' OR e.tipo_evento LIKE 'R-4099%')
+                )
                 ORDER BY l.created_at DESC 
-                LIMIT 50
+                LIMIT 100
             ";
             $stmtLotes = $this->db->prepare($sqlLotes);
             $stmtLotes->execute([':id_orgao' => $this->idOrgao]);
@@ -327,20 +346,70 @@ class ReinfController
 
             // Busca histórico de EVENTOS individuais (R-4020, R-9000, etc)
             $sqlEventos = "
-                SELECT e.id, l.created_at, e.tipo_evento, e.status, e.numero_recibo, e.mensagem_erro,
-                       f.razao_social, f.cnpj, e.id_fornecedor, e.per_apuracao
+                SELECT e.id, e.id_lote, l.created_at, e.tipo_evento, e.status, e.numero_recibo, e.mensagem_erro,
+                       COALESCE(f.razao_social, CASE 
+                           WHEN e.tipo_evento = 'R-4099' AND e.xml_assinado LIKE '%<fechRet>1</fechRet>%' THEN 'Reabertura de Período'
+                           WHEN e.tipo_evento = 'R-4099' AND e.xml_assinado LIKE '%<fechRet>0</fechRet>%' THEN 'Fechamento de Período'
+                           WHEN e.tipo_evento LIKE '%Reabertura%' OR e.tipo_evento LIKE '%-Reab%' THEN 'Reabertura de Período'
+                           WHEN e.tipo_evento LIKE 'R-4099%' THEN 'Fechamento de Período'
+                           ELSE 'Sistema' 
+                       END) as razao_social, 
+                       f.cnpj, e.id_fornecedor, e.per_apuracao
                 FROM reinf_eventos e
                 LEFT JOIN fornecedores f ON e.id_fornecedor = f.id
                 JOIN reinf_lotes l ON e.id_lote = l.id
                 WHERE l.id_orgao = :id_orgao
                 ORDER BY l.created_at DESC
-                LIMIT 50
+                LIMIT 100
             ";
             $stmtEventos = $this->db->prepare($sqlEventos);
             $stmtEventos->execute([':id_orgao' => $this->idOrgao]);
             $eventos = $stmtEventos->fetchAll(PDO::FETCH_ASSOC);
 
-            echo json_encode(['success' => true, 'pendencias' => $pendencias, 'historico' => $historico, 'eventos' => $eventos]);
+            // --- RESUMO DE ENVIOS COM SUCESSO ---
+            $sqlResumo = "
+                SELECT 
+                    f.razao_social,
+                    f.cnpj,
+                    e.numero_recibo,
+                    COUNT(rep.id_pagamento) as qtd_pagamentos,
+                    SUM(p.valor_bruto) as total_bruto,
+                    SUM(p.valor_ir) as total_retido
+                FROM reinf_eventos e
+                JOIN fornecedores f ON e.id_fornecedor = f.id
+                JOIN reinf_evento_pagamentos rep ON e.id = rep.id_evento
+                JOIN pagamentos p ON rep.id_pagamento = p.id
+                JOIN reinf_lotes l ON e.id_lote = l.id
+                WHERE l.id_orgao = :id_orgao
+                AND e.per_apuracao = :periodo
+                AND e.status = 'sucesso'
+                AND e.tipo_evento = 'R-4020'
+                GROUP BY f.id, f.razao_social, f.cnpj, e.numero_recibo
+            ";
+            
+            $stmtResumo = $this->db->prepare($sqlResumo);
+            $stmtResumo->execute([':id_orgao' => $this->idOrgao, ':periodo' => $periodo]);
+            $resumo = $stmtResumo->fetchAll(PDO::FETCH_ASSOC);
+
+            // --- STATUS DO PERÍODO (ABERTO/FECHADO) ---
+            $sqlStatus = "
+                SELECT e.xml_assinado 
+                FROM reinf_eventos e
+                JOIN reinf_lotes l ON e.id_lote = l.id
+                WHERE l.id_orgao = :id_orgao
+                AND e.per_apuracao = :periodo
+                AND e.tipo_evento = 'R-4099'
+                AND e.status = 'sucesso'
+                ORDER BY e.id DESC LIMIT 1
+            ";
+            $stmtStatus = $this->db->prepare($sqlStatus);
+            $stmtStatus->execute([':id_orgao' => $this->idOrgao, ':periodo' => $periodo]);
+            $ultimoFechamento = $stmtStatus->fetch(PDO::FETCH_ASSOC);
+
+            // Se encontrar um evento de fechamento (0), o status é Fechado. Caso contrário (1 ou null), é Aberto.
+            $statusPeriodo = ($ultimoFechamento && strpos($ultimoFechamento['xml_assinado'], '<fechRet>0</fechRet>') !== false) ? 'Fechado' : 'Aberto';
+
+            echo json_encode(['success' => true, 'pendencias' => $pendencias, 'historico' => $historico, 'eventos' => $eventos, 'resumo' => $resumo, 'status_periodo' => $statusPeriodo]);
 
         } catch (Exception $e) {
             $this->jsonError($e->getMessage());
@@ -405,10 +474,11 @@ class ReinfController
                     JOIN notas_fiscais nf ON p.id_nota = nf.id
                     JOIN natureza_servicos ns ON nf.id_natureza_servico = ns.id
                     WHERE nf.id_fornecedor = ? 
+                    AND nf.id_orgao = ?
                     AND DATE_FORMAT(p.data_pagamento, '%Y-%m') = ?
                 ";
                 $stmtPgtos = $this->db->prepare($sqlPgtos);
-                $stmtPgtos->execute([$idFornecedor, $periodo]);
+                $stmtPgtos->execute([$idFornecedor, $this->idOrgao, $periodo]);
                 $listaPagamentos = $stmtPgtos->fetchAll(PDO::FETCH_ASSOC);
 
                 if (empty($listaPagamentos)) continue;
@@ -421,15 +491,18 @@ class ReinfController
                 $sqlCheck = "
                     SELECT e.numero_recibo 
                     FROM reinf_eventos e
+                    JOIN reinf_lotes l ON e.id_lote = l.id
                     JOIN fornecedores f ON e.id_fornecedor = f.id
                     WHERE f.cnpj = ? 
+                    AND l.id_orgao = ?
                     AND e.per_apuracao = ? 
                     AND e.status = 'sucesso' 
+                    AND e.tipo_evento = 'R-4020'
                     AND e.numero_recibo IS NOT NULL 
                     ORDER BY e.id DESC LIMIT 1
                 ";
                 $stmtCheck = $this->db->prepare($sqlCheck);
-                $stmtCheck->execute([$dadosFornecedor['cnpj'], $periodo]);
+                $stmtCheck->execute([$dadosFornecedor['cnpj'], $this->idOrgao, $periodo]);
                 $eventoAnterior = $stmtCheck->fetch(PDO::FETCH_ASSOC);
 
                 $indRetif = 1;
@@ -475,7 +548,7 @@ class ReinfController
             $this->db->beginTransaction();
             
             $stmtLote = $this->db->prepare("INSERT INTO reinf_lotes (id_orgao, protocolo, xml_envio, xml_retorno, status) VALUES (?, ?, ?, ?, 'enviado')");
-            $stmtLote->execute([1, $protocolo, $xmlLote, $retorno['response']]);
+            $stmtLote->execute([$this->idOrgao, $protocolo, $xmlLote, $retorno['response']]);
             $idLoteDb = $this->db->lastInsertId();
 
             $stmtEvento = $this->db->prepare("INSERT INTO reinf_eventos (id_lote, id_fornecedor, per_apuracao, tipo_evento, id_evento_xml, status, xml_assinado) VALUES (?, ?, ?, 'R-4020', ?, 'em_lote', ?)");
@@ -577,6 +650,218 @@ class ReinfController
         }
     }
 
+    public function enviarFechamento() {
+        try {
+            $input = json_decode(file_get_contents('php://input'), true);
+            $periodo = $input['periodo'] ?? null;
+            $acao = $input['acao'] ?? 1; // 1 = Fechamento, 0 = Reabertura
+
+            if (!$periodo) throw new Exception("Período não informado.");
+            if (!$this->reinfConfig) throw new Exception("Certificado digital não configurado.");
+
+            // Dados do Órgão
+            $sqlOrgao = "SELECT * FROM orgaos WHERE id = ?";
+            $stmtOrgao = $this->db->prepare($sqlOrgao);
+            $stmtOrgao->execute([$this->idOrgao]);
+            $orgaoDb = $stmtOrgao->fetch(PDO::FETCH_ASSOC);
+
+            $dadosOrgao = [
+                'tpInsc' => 1, 
+                'nrInsc' => preg_replace('/[^0-9]/', '', $orgaoDb['cnpj']), 
+                'tpInsc' => 1, // 1 = CNPJ
+                'ambiente' => 2 // Pre-prod
+            ];
+
+            $responsavel = [
+                'nome' => $orgaoDb['contato_nome'],
+                'cpf' => $orgaoDb['contato_cpf'],
+                'telefone' => $orgaoDb['contato_telefone'],
+                'email' => $orgaoDb['contato_email']
+            ];
+
+            $builder = new R4099Builder();
+            $signer = new ReinfSigner($this->reinfConfig);
+
+            // Mapeamento conforme Manual Reinf (R-4099):
+            // Frontend envia: 1 = Fechar, 0 = Reabrir
+            // XML exige: 0 = Fechamento, 1 = Reabertura
+            $fechRet = ($acao == 1) ? 0 : 1;
+            
+            $resultadoBuild = $builder->build($dadosOrgao, $periodo, $responsavel, $fechRet);
+            $xmlAssinado = $signer->sign($resultadoBuild['xml'], 'evtFech');
+
+            // Monta Lote
+            $xmlLote = $this->montarEnvelopeLote($dadosOrgao['nrInsc'], [$xmlAssinado]);
+
+            // Envia
+            $client = new ReinfClient($this->reinfConfig);
+            $retorno = $client->enviarLote($xmlLote);
+
+            // Processa Retorno
+            $domRetorno = new DOMDocument();
+            $domRetorno->loadXML($retorno['response']);
+            $protocolo = $domRetorno->getElementsByTagName('protocoloEnvio')->item(0)->nodeValue ?? null;
+
+            if (!$protocolo) throw new Exception("Erro no envio: " . strip_tags($retorno['response']));
+
+            // Salva Lote
+            $stmtLote = $this->db->prepare("INSERT INTO reinf_lotes (id_orgao, protocolo, xml_envio, xml_retorno, status) VALUES (?, ?, ?, ?, 'enviado')");
+            $stmtLote->execute([$this->idOrgao, $protocolo, $xmlLote, $retorno['response']]);
+            $idLoteDb = $this->db->lastInsertId();
+
+            // Salva Evento para histórico
+            $tipoEvento = ($acao == 1) ? 'R-4099' : 'R-4099-Reabertura';
+            $stmtEvento = $this->db->prepare("INSERT INTO reinf_eventos (id_lote, id_fornecedor, per_apuracao, tipo_evento, id_evento_xml, status, xml_assinado) VALUES (?, NULL, ?, ?, ?, 'em_lote', ?)");
+            $stmtEvento->execute([$idLoteDb, $periodo, $tipoEvento, $resultadoBuild['id'], $xmlAssinado]);
+
+            echo json_encode(['success' => true, 'protocolo' => $protocolo, 'message' => 'Evento de fechamento/reabertura enviado com sucesso.']);
+
+        } catch (Exception $e) {
+            $this->jsonError($e->getMessage());
+        }
+    }
+
+    public function buscarExtratoFechamento() {
+        try {
+            $periodo = $_GET['periodo'] ?? date('Y-m');
+            
+            // Busca o último evento de fechamento (R-4099) com status 'sucesso'
+            // O XML de retorno do lote (que contém o R-9015) está na tabela reinf_lotes
+            $sql = "
+                SELECT l.xml_retorno, e.numero_recibo
+                FROM reinf_eventos e
+                JOIN reinf_lotes l ON e.id_lote = l.id
+                WHERE e.per_apuracao = :periodo
+                AND l.id_orgao = :id_orgao
+                AND e.tipo_evento = 'R-4099'
+                AND e.status = 'sucesso'
+                ORDER BY e.id DESC LIMIT 1
+            ";
+            
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute([':periodo' => $periodo, ':id_orgao' => $this->idOrgao]);
+            $evento = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if (!$evento || empty($evento['xml_retorno'])) {
+                echo json_encode(['success' => false, 'message' => 'Fechamento não encontrado ou sem retorno processado.']);
+                return;
+            }
+
+            $dom = new DOMDocument();
+            libxml_use_internal_errors(true);
+            $dom->loadXML($evento['xml_retorno']);
+            libxml_clear_errors();
+            
+            $xpath = new DOMXPath($dom);
+            
+            // Busca o evento R-9015 (evtRetCons) dentro do retorno
+            // Usamos local-name() para evitar problemas com namespaces variáveis
+            $evtRetCons = $xpath->query("//*[local-name()='evtRetCons']")->item(0);
+            
+            if (!$evtRetCons) {
+                echo json_encode(['success' => false, 'message' => 'O XML de retorno não contém o extrato consolidado (R-9015).']);
+                return;
+            }
+
+            $dados = [];
+            
+            // Mapeamento dos tipos de apuração conforme XSD R-9015
+            $tiposApuracao = [
+                'totApurMen' => ['nome' => 'Mensal', 'tagCR' => 'CRMen', 'tagVal' => 'vlrCRMenDCTF', 'tagSusp' => 'vlrCRMenSuspDCTF'],
+                'totApurQui' => ['nome' => 'Quinzenal', 'tagCR' => 'CRQui', 'tagVal' => 'vlrCRQuiDCTF', 'tagSusp' => 'vlrCRQuiSuspDCTF'],
+                'totApurDec' => ['nome' => 'Decendial', 'tagCR' => 'CRDec', 'tagVal' => 'vlrCRDecDCTF', 'tagSusp' => 'vlrCRDecSuspDCTF'],
+                'totApurSem' => ['nome' => 'Semanal', 'tagCR' => 'CRSem', 'tagVal' => 'vlrCRSemDCTF', 'tagSusp' => 'vlrCRSemSuspDCTF'],
+                'totApurDia' => ['nome' => 'Diário', 'tagCR' => 'CRDia', 'tagVal' => 'vlrCRDiaDCTF', 'tagSusp' => 'vlrCRDiaSuspDCTF']
+            ];
+
+            // [CORREÇÃO] Busca especificamente dentro de infoTotalCR para evitar duplicidade
+            // O XML possui infoCR_CNR (detalhado) e infoTotalCR (consolidado).
+            // Usamos o consolidado pois é o que reflete a guia de pagamento (DCTFWeb).
+            $infoTotalCR = $xpath->query(".//*[local-name()='infoTotalCR']", $evtRetCons)->item(0);
+
+            // Se não houver infoTotalCR (ex: sem movimento), usa o nó raiz para não quebrar, 
+            // mas a busca abaixo não retornará nada se não houver as tags.
+            $contextNode = $infoTotalCR ? $infoTotalCR : $evtRetCons;
+
+            foreach ($tiposApuracao as $tagPai => $config) {
+                // Usa ./ para buscar apenas filhos diretos do contexto selecionado
+                $nodes = $xpath->query(".//*[local-name()='$tagPai']", $contextNode);
+                foreach ($nodes as $node) {
+                    $cr = $xpath->query(".//*[local-name()='{$config['tagCR']}']", $node)->item(0)->nodeValue ?? '-';
+                    $val = $xpath->query(".//*[local-name()='{$config['tagVal']}']", $node)->item(0)->nodeValue ?? '0,00';
+                    $susp = $xpath->query(".//*[local-name()='{$config['tagSusp']}']", $node)->item(0)->nodeValue ?? '0,00';
+                    
+                    // Evita adicionar se o CR for inválido ou vazio
+                    if ($cr !== '-') {
+                        $dados[] = [
+                            'tipo' => $config['nome'],
+                            'cr' => $cr,
+                            'valor' => $val,
+                            'suspenso' => $susp
+                        ];
+                    }
+                }
+            }
+
+            echo json_encode([
+                'success' => true, 
+                'recibo' => $evento['numero_recibo'], 
+                'extrato' => $dados,
+                'xml_raw' => $evento['xml_retorno'] // Retorna o XML original para conferência
+            ]);
+
+        } catch (Exception $e) {
+            $this->jsonError($e->getMessage());
+        }
+    }
+
+    public function recuperarRecibos4020() {
+        try {
+            // Busca lotes processados que contenham retorno de R-4020 (evtRet)
+            $sql = "SELECT id, xml_retorno, created_at FROM reinf_lotes WHERE status = 'processado' AND xml_retorno LIKE '%evtRet%' ORDER BY id DESC";
+            $stmt = $this->db->query($sql);
+            
+            $recibosEncontrados = [];
+
+            while ($lote = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                if (empty($lote['xml_retorno'])) continue;
+
+                $dom = new DOMDocument();
+                libxml_use_internal_errors(true);
+                $dom->loadXML($lote['xml_retorno']);
+                libxml_clear_errors();
+                
+                $xpath = new DOMXPath($dom);
+                
+                // Busca eventos de retorno R-4020 (evtRet)
+                // O namespace pode variar, então usamos local-name()
+                $eventos = $xpath->query("//*[local-name()='evtRet']");
+
+                foreach ($eventos as $evento) {
+                    // Verifica status de sucesso (cdRetorno = 0)
+                    $cdRetorno = $xpath->query(".//*[local-name()='cdRetorno']", $evento)->item(0);
+                    
+                    if ($cdRetorno && $cdRetorno->nodeValue == '0') {
+                        $nrRecibo = $xpath->query(".//*[local-name()='nrRecArqBase']", $evento)->item(0);
+                        
+                        if ($nrRecibo) {
+                            $recibosEncontrados[] = [
+                                'lote_id' => $lote['id'],
+                                'data_lote' => $lote['created_at'],
+                                'numero_recibo' => $nrRecibo->nodeValue
+                            ];
+                        }
+                    }
+                }
+            }
+
+            echo json_encode(['success' => true, 'total' => count($recibosEncontrados), 'dados' => $recibosEncontrados]);
+
+        } catch (Exception $e) {
+            $this->jsonError($e->getMessage());
+        }
+    }
+
     /**
      * Monta o envelope manualmente para garantir que a Assinatura (Signature)
      * mantenha seu namespace original (http://www.w3.org/2000/09/xmldsig#).
@@ -666,9 +951,19 @@ class ReinfController
                 throw new Exception("Arquivo XSD não encontrado no caminho: $xsdPath");
             }
 
-            // Prepara dados
+            // Busca dados do órgão
+            $sqlOrgao = "SELECT * FROM orgaos WHERE id = ?";
+            $stmtOrgao = $this->db->prepare($sqlOrgao);
+            $stmtOrgao->execute([$this->idOrgao]);
+            $orgaoDb = $stmtOrgao->fetch(PDO::FETCH_ASSOC);
+
+            if (!$orgaoDb) throw new Exception("Órgão não encontrado.");
+
             $dadosOrgao = [
-                'tpInsc' => 1, 'nrInsc' => '00860058000105', 'cnpj' => '00860058000105', 'ambiente' => 2
+                'tpInsc' => 1, 
+                'nrInsc' => preg_replace('/[^0-9]/', '', $orgaoDb['cnpj']), 
+                'cnpj' => preg_replace('/[^0-9]/', '', $orgaoDb['cnpj']), 
+                'ambiente' => 2
             ];
 
             $builder = new R4020Builder();

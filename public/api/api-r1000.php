@@ -41,6 +41,10 @@ if (file_exists($controllerPath)) {
             $controller->enviarEvento(); break;
         case 'excluir':
             $controller->excluirEvento(); break;
+        case 'resetar_local': // NOVO
+            $controller->resetarLocal(); break;
+        case 'limpar_eventos': // NOVO - Limpeza na Receita
+            $controller->limparEventosReceita(); break;
         case 'consultar':
             $controller->consultarLoteR1000(); break;
         default:

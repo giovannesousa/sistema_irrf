@@ -157,6 +157,28 @@ if ($action == 'salvar_nota') {
         $valorIRRF = floatval(str_replace(['.', ','], ['', '.'], $input['valor_irrf_retido']));
         $valorLiquido = $valorBruto - $valorIRRF;
         
+        // Processar Upload de Arquivo
+        $caminhoAnexo = null;
+        if (isset($_FILES['arquivo_nota']) && $_FILES['arquivo_nota']['error'] === UPLOAD_ERR_OK) {
+            $uploadDir = __DIR__ . '/../../public/uploads/notas/';
+            if (!is_dir($uploadDir)) {
+                mkdir($uploadDir, 0777, true);
+            }
+            
+            $fileExt = strtolower(pathinfo($_FILES['arquivo_nota']['name'], PATHINFO_EXTENSION));
+            $allowedExts = ['pdf', 'jpg', 'jpeg', 'png', 'xml'];
+            
+            if (in_array($fileExt, $allowedExts)) {
+                // Nome único para evitar sobrescrita
+                $newFileName = 'nota_' . date('YmdHis') . '_' . uniqid() . '.' . $fileExt;
+                $destPath = $uploadDir . $newFileName;
+                
+                if (move_uploaded_file($_FILES['arquivo_nota']['tmp_name'], $destPath)) {
+                    $caminhoAnexo = 'uploads/notas/' . $newFileName;
+                }
+            }
+        }
+
         // Preparar dados da nota
         $dadosNota = [
             'id_orgao' => $usuario['id_orgao'] ?? 1,
@@ -171,7 +193,8 @@ if ($action == 'salvar_nota') {
             'valor_iss_retido' => 0.00, // Se for necessário
             'descricao_servico' => $input['descricao_servico'] ?? '',
             'observacoes' => $input['observacoes'] ?? '',
-            'status_pagamento' => 'pendente'
+            'status_pagamento' => 'pendente',
+            'caminho_anexo' => $caminhoAnexo
         ];
         
         // Salvar no banco

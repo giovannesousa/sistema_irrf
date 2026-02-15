@@ -22,10 +22,6 @@ if (!$idOrgao) {
     die("Erro: ID do órgão não encontrado na sessão. Faça login novamente.");
 }
 
-$notaModel = new NotaFiscal();
-$notasPendentes = $notaModel->listarPendentesPagamento($idOrgao);
-$estatisticas = $notaModel->estatisticasPagamentos($idOrgao);
-
 require_once __DIR__ . '/layout/header.php';
 ?>
 
@@ -151,165 +147,91 @@ require_once __DIR__ . '/layout/header.php';
             <h1 class="h3 mb-1" style="color: var(--primary-color); font-weight: 700;">
                 <i class="bi bi-cash-stack me-2"></i> Registrar pagamentos
             </h1>
-            <p class="text-muted mb-0">Gerencie o pagamento das notas fiscais pendentes</p>
-        </div>
-    </div>
-
-    <!-- Cards de Resumo -->
-    <div class="row mb-4">
-        <div class="col-md-3">
-            <div class="card card-resumo">
-                <div class="card-body text-center">
-                    <i class="bi bi-receipt display-4 mb-3"></i>
-                    <h5>Notas Pendentes</h5>
-                    <div class="valor-destaque"><?php echo $estatisticas['pendentes'] ?? 0; ?></div>
-                    <p class="small mb-0">Aguardando pagamento</p>
-                </div>
-            </div>
+            <p class="text-muted mb-0">Gerencie o pagamento das notas fiscais por competência</p>
         </div>
         
-        <div class="col-md-3">
-            <div class="card card-resumo" style="background: linear-gradient(135deg, #20c997 0%, #17a2b8 100%);">
-                <div class="card-body text-center">
-                    <i class="bi bi-cash-coin display-4 mb-3"></i>
-                    <h5>Total a Pagar</h5>
-                    <div class="valor-destaque">R$ <?php echo number_format($estatisticas['total_liquido'] ?? 0, 2, ',', '.'); ?></div>
-                    <p class="small mb-0">Valor líquido total</p>
-                </div>
-            </div>
-        </div>
-        
-        <div class="col-md-3">
-            <div class="card card-resumo" style="background: linear-gradient(135deg, #ffc107 0%, #fd7e14 100%);">
-                <div class="card-body text-center">
-                    <i class="bi bi-currency-dollar display-4 mb-3"></i>
-                    <h5>IRRF Retido</h5>
-                    <div class="valor-destaque">R$ <?php echo number_format($estatisticas['total_irrf_retido'] ?? 0, 2, ',', '.'); ?></div>
-                    <p class="small mb-0">Total retido na fonte</p>
-                </div>
-            </div>
-        </div>
-        
-        <div class="col-md-3">
-            <div class="card card-resumo" style="background: linear-gradient(135deg, #6c757d 0%, #495057 100%);">
-                <div class="card-body text-center">
-                    <i class="bi bi-check-circle display-4 mb-3"></i>
-                    <h5>Notas Pagas</h5>
-                    <div class="valor-destaque"><?php echo $estatisticas['pagas'] ?? 0; ?></div>
-                    <p class="small mb-0">Pagamentos realizados</p>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Lista de Notas Pendentes -->
-    <div class="card">
-        <div class="card-header d-flex justify-content-between align-items-center">
-            <h5 class="mb-0"><i class="bi bi-list-ul me-2"></i> Notas Pendentes de Pagamento</h5>
-            <div class="d-flex gap-2">
-                <button class="btn btn-outline-primary btn-sm" id="btnAtualizar">
-                    <i class="bi bi-arrow-clockwise me-1"></i> Atualizar
+        <!-- Seletor de Competência -->
+        <div class="card shadow-sm border-0">
+            <div class="card-body p-2 d-flex align-items-center gap-2">
+                <label for="filtroCompetencia" class="fw-bold text-secondary mb-0">Competência:</label>
+                <input type="month" id="filtroCompetencia" class="form-control form-control-sm border-primary" style="width: 160px;">
+                <button onclick="carregarDadosCompetencia()" class="btn btn-primary btn-sm">
+                    <i class="bi bi-filter me-1"></i> Filtrar
                 </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 1. Notas A PAGAR (Pendentes) -->
+    <div class="card mb-4 border-0 shadow-sm">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0 text-warning"><i class="bi bi-hourglass-split me-2"></i> A Pagar (Pendentes)</h5>
+            <div class="d-flex gap-2">
                 <button class="btn btn-outline-success btn-sm" id="btnPagarMultiplas">
                     <i class="bi bi-wallet2 me-1"></i> Pagar Várias
                 </button>
             </div>
         </div>
         <div class="card-body">
-            <!-- Loading Spinner -->
-            <div class="loading-spinner" id="loadingSpinner">
-                <div class="spinner-border text-primary" role="status">
-                    <span class="visually-hidden">Carregando...</span>
-                </div>
-                <p class="mt-2 text-muted">Carregando notas...</p>
+            <div class="table-responsive table-notas">
+                <table class="table table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th width="50"><input type="checkbox" id="selecionarTodos" class="form-check-input"></th>
+                            <th>Nº Nota</th>
+                            <th>Fornecedor</th>
+                            <th>Emissão</th>
+                            <th>Valor Bruto</th>
+                            <th>IRRF</th>
+                            <th>Líquido</th>
+                            <th width="150">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="listaPendentes">
+                        <tr><td colspan="8" class="text-center py-4 text-muted">Carregando...</td></tr>
+                    </tbody>
+                    <tfoot class="bg-light">
+                        <tr>
+                            <td colspan="4" class="text-end"><strong>Totais Selecionados:</strong></td>
+                            <td id="totalBrutoSelecionado">R$ 0,00</td>
+                            <td id="totalIrrfSelecionado">R$ 0,00</td>
+                            <td id="totalLiquidoSelecionado">R$ 0,00</td>
+                            <td>
+                                <button class="btn btn-sm btn-success w-100" id="btnPagarSelecionadas" disabled>
+                                    <i class="bi bi-check2-all"></i> Pagar
+                                </button>
+                            </td>
+                        </tr>
+                    </tfoot>
+                </table>
             </div>
+        </div>
+    </div>
 
-            <?php if (empty($notasPendentes)): ?>
-                <div class="text-center py-5">
-                    <i class="bi bi-check-circle display-4 text-success mb-3"></i>
-                    <h4>Todas as notas estão pagas!</h4>
-                    <p class="text-muted">Não há notas pendentes de pagamento no momento.</p>
-                    <a href="/sistema_irrf/public/gerar-nota" class="btn btn-primary">
-                        <i class="bi bi-plus-circle me-1"></i> Gerar Nova Nota
-                    </a>
-                </div>
-            <?php else: ?>
-                <div class="table-responsive table-notas">
-                    <table class="table table-hover">
-                        <thead>
-                            <tr>
-                                <th width="50">
-                                    <input type="checkbox" id="selecionarTodos" class="form-check-input">
-                                </th>
-                                <th>Nº Nota</th>
-                                <th>Fornecedor</th>
-                                <th>Data Emissão</th>
-                                <th>Valor Bruto</th>
-                                <th>IRRF Retido</th>
-                                <th>Valor Líquido</th>
-                                <th>Status</th>
-                                <th width="180">Ações</th>
-                            </tr>
-                        </thead>
-                        <tbody id="tabelaNotas">
-                            <?php foreach ($notasPendentes as $nota): ?>
-                                <tr data-id="<?php echo $nota['id']; ?>">
-                                    <td>
-                                        <input type="checkbox" class="form-check-input selecionar-nota" value="<?php echo $nota['id']; ?>">
-                                    </td>
-                                    <td>
-                                        <strong><?php echo htmlspecialchars($nota['numero_nota']); ?></strong>
-                                    </td>
-                                    <td>
-                                        <div><?php echo htmlspecialchars($nota['razao_social']); ?></div>
-                                        <small class="text-muted"><?php echo htmlspecialchars($nota['cnpj']); ?></small>
-                                    </td>
-                                    <td>
-                                        <?php echo date('d/m/Y', strtotime($nota['data_emissao'])); ?>
-                                    </td>
-                                    <td>
-                                        <strong class="text-primary">R$ <?php echo number_format($nota['valor_bruto'], 2, ',', '.'); ?></strong>
-                                    </td>
-                                    <td>
-                                        <span class="text-danger">R$ <?php echo number_format($nota['valor_irrf_retido'], 2, ',', '.'); ?></span>
-                                    </td>
-                                    <td>
-                                        <strong class="text-success">R$ <?php echo number_format($nota['valor_liquido'], 2, ',', '.'); ?></strong>
-                                    </td>
-                                    <td>
-                                        <span class="badge badge-pendente badge-status">
-                                            <i class="bi bi-clock me-1"></i> Pendente
-                                        </span>
-                                    </td>
-                                    <td>
-                                        <div class="d-flex gap-2">
-                                            <button class="btn btn-pagar btn-sm" onclick="pagarNota(<?php echo $nota['id']; ?>)">
-                                                <i class="bi bi-check-circle me-1"></i> Pagar
-                                            </button>
-                                            <button class="btn btn-detalhes btn-sm" onclick="verDetalhes(<?php echo $nota['id']; ?>)">
-                                                <i class="bi bi-eye me-1"></i> Detalhes
-                                            </button>
-                                        </div>
-                                    </td>
-                                </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                        <tfoot>
-                            <tr>
-                                <td colspan="4" class="text-end"><strong>Totais Selecionados:</strong></td>
-                                <td id="totalBrutoSelecionado">R$ 0,00</td>
-                                <td id="totalIrrfSelecionado">R$ 0,00</td>
-                                <td id="totalLiquidoSelecionado">R$ 0,00</td>
-                                <td colspan="2">
-                                    <button class="btn btn-success" id="btnPagarSelecionadas" disabled>
-                                        <i class="bi bi-wallet2 me-1"></i> Pagar Selecionadas
-                                    </button>
-                                </td>
-                            </tr>
-                        </tfoot>
-                    </table>
-                </div>
-            <?php endif; ?>
+    <!-- 2. Notas PAGAS (Realizados na Competência) -->
+    <div class="card border-0 shadow-sm">
+        <div class="card-header bg-success text-white">
+            <h5 class="mb-0"><i class="bi bi-check-circle me-2"></i> Pagamentos Realizados (Nesta Competência)</h5>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive table-notas">
+                <table class="table table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Nº Nota</th>
+                            <th>Fornecedor</th>
+                            <th>Data Pagto</th>
+                            <th>Valor Bruto</th>
+                            <th>IRRF Retido</th>
+                            <th>Valor Pago</th>
+                            <th width="100">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="listaPagas">
+                        <tr><td colspan="7" class="text-center py-4 text-muted">Carregando...</td></tr>
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
 </div>
@@ -367,6 +289,36 @@ require_once __DIR__ . '/layout/header.php';
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
                 <button type="button" class="btn btn-success" id="btnConfirmarPagamento">
                     <i class="bi bi-check-circle me-1"></i> Confirmar Pagamento
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Editar Data Pagamento -->
+<div class="modal fade" id="modalEditarPagamento" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-pencil-square me-2"></i> Editar Data do Pagamento</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="editNotaId">
+                <div class="alert alert-warning small">
+                    <i class="bi bi-exclamation-triangle me-2"></i>
+                    <strong>Atenção:</strong> Alterar a data pode mudar a competência do pagamento.
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">Nova Data do Pagamento</label>
+                    <input type="date" class="form-control" id="editDataPagamento">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary" id="btnSalvarEdicao">
+                    <i class="bi bi-save me-1"></i> Salvar Alterações
                 </button>
             </div>
         </div>
@@ -442,9 +394,7 @@ $(document).ready(function() {
                             $(this).remove();
                             
                             // Recarregar a página para atualizar estatísticas
-                            setTimeout(function() {
-                                location.reload();
-                            }, 500);
+                            carregarDadosCompetencia();
                         });
                         
                         // Mostrar mensagem de sucesso
@@ -482,9 +432,7 @@ $(document).ready(function() {
                             $('tr[data-id="' + id + '"]').fadeOut(300);
                         });
                         
-                        setTimeout(function() {
-                            location.reload();
-                        }, 500);
+                        carregarDadosCompetencia();
                         
                         mostrarAlerta(response.message + ' (' + response.total_pagas + ' notas pagas)', 'success');
                         
@@ -609,14 +557,160 @@ $(document).ready(function() {
         $('#totalLiquidoSelecionado').text('R$ ' + totalLiquido.toFixed(2).replace('.', ','));
     }
     
-    // Botão Atualizar
-    $('#btnAtualizar').click(function() {
-        location.reload();
-    });
+    // ==================== CARREGAMENTO DE DADOS ====================
+    window.carregarDadosCompetencia = function() {
+        const periodo = $('#filtroCompetencia').val();
+        
+        // Feedback de carregamento
+        $('#listaPendentes, #listaPagas').html('<tr><td colspan="8" class="text-center py-4"><div class="spinner-border text-primary" role="status"></div></td></tr>');
+
+        $.ajax({
+            url: '/sistema_irrf/public/api/pagamento.php?action=listar_competencia',
+            type: 'GET',
+            data: { periodo: periodo },
+            dataType: 'json',
+            success: function(res) {
+                if (res.success) {
+                    // Atualiza o input de data se veio vazio (primeira carga)
+                    if (!periodo) {
+                        $('#filtroCompetencia').val(res.periodo_selecionado);
+                    }
+                    
+                    renderPendentes(res.pendentes);
+                    renderPagas(res.pagas, res.is_fechado);
+                } else {
+                    mostrarAlerta('Erro ao carregar dados: ' + res.error, 'danger');
+                }
+            },
+            error: function() {
+                mostrarAlerta('Erro de conexão ao carregar dados.', 'danger');
+            }
+        });
+    };
+
+    // Carrega dados iniciais (após a definição da função)
+    carregarDadosCompetencia();
+
+    function renderPendentes(lista) {
+        let html = '';
+        if (lista.length === 0) {
+            html = '<tr><td colspan="8" class="text-center py-4 text-muted">Nenhuma nota pendente para esta competência (ou anteriores).</td></tr>';
+        } else {
+            lista.forEach(nota => {
+                html += `
+                    <tr data-id="${nota.id}">
+                        <td><input type="checkbox" class="form-check-input selecionar-nota" value="${nota.id}"></td>
+                        <td><strong>${nota.numero_nota}</strong></td>
+                        <td>
+                            <div>${nota.razao_social}</div>
+                            <small class="text-muted">${formatCnpj(nota.cnpj)}</small>
+                        </td>
+                        <td>${formatDate(nota.data_emissao)}</td>
+                        <td>R$ ${formatMoney(nota.valor_bruto)}</td>
+                        <td class="text-danger">R$ ${formatMoney(nota.valor_irrf_retido)}</td>
+                        <td class="text-success fw-bold">R$ ${formatMoney(nota.valor_liquido)}</td>
+                        <td>
+                            <button class="btn btn-pagar btn-sm me-1" onclick="pagarNota(${nota.id})" title="Pagar">
+                                <i class="bi bi-check-lg"></i>
+                            </button>
+                            <button class="btn btn-outline-secondary btn-sm" onclick="verDetalhes(${nota.id})" title="Detalhes">
+                                <i class="bi bi-eye"></i>
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            });
+        }
+        $('#listaPendentes').html(html);
+        // Reatribuir eventos aos novos checkboxes
+        $('.selecionar-nota').change(atualizarSelecao);
+        $('#selecionarTodos').prop('checked', false);
+        atualizarSelecao();
+    }
+
+    function renderPagas(lista, isFechado) {
+        let html = '';
+        if (lista.length === 0) {
+            html = '<tr><td colspan="7" class="text-center py-4 text-muted">Nenhum pagamento realizado nesta competência.</td></tr>';
+        } else {
+            lista.forEach(nota => {
+                let btnEditar = '';
+                if (isFechado) {
+                    btnEditar = `<button class="btn btn-outline-secondary btn-sm me-1" disabled title="Competência Fechada (Reinf)"><i class="bi bi-lock-fill"></i></button>`;
+                } else {
+                    btnEditar = `<button class="btn btn-outline-primary btn-sm me-1" onclick="abrirModalEditarData(${nota.id}, '${nota.data_pagamento}')" title="Editar Data"><i class="bi bi-pencil"></i></button>`;
+                }
+
+                html += `
+                    <tr>
+                        <td><strong>${nota.numero_nota}</strong></td>
+                        <td>
+                            <div>${nota.razao_social}</div>
+                            <small class="text-muted">${formatCnpj(nota.cnpj)}</small>
+                        </td>
+                        <td>${formatDate(nota.data_pagamento)}</td>
+                        <td>R$ ${formatMoney(nota.valor_bruto)}</td>
+                        <td class="text-danger">R$ ${formatMoney(nota.valor_irrf_retido)}</td>
+                        <td class="text-success fw-bold">R$ ${formatMoney(nota.valor_liquido)}</td>
+                        <td>
+                            ${btnEditar}
+                            <button class="btn btn-outline-secondary btn-sm" onclick="verDetalhes(${nota.id})" title="Detalhes">
+                                <i class="bi bi-eye"></i>
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            });
+        }
+        $('#listaPagas').html(html);
+    }
     
     // Botão Pagar Múltiplas
     $('#btnPagarMultiplas').click(function() {
         $('#btnPagarSelecionadas').click();
+    });
+
+    // ==================== EDITAR DATA PAGAMENTO ====================
+    window.abrirModalEditarData = function(id, dataAtual) {
+        $('#editNotaId').val(id);
+        $('#editDataPagamento').val(dataAtual);
+        var modal = new bootstrap.Modal(document.getElementById('modalEditarPagamento'));
+        modal.show();
+    };
+
+    $('#btnSalvarEdicao').click(function() {
+        var id = $('#editNotaId').val();
+        var novaData = $('#editDataPagamento').val();
+        var btn = $(this);
+        
+        if(!novaData) { 
+            alert('Por favor, informe a nova data.'); 
+            return; 
+        }
+
+        var originalHtml = btn.html();
+        btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span> Salvando...');
+
+        $.ajax({
+            url: '/sistema_irrf/public/api/pagamento.php?action=editar_data',
+            type: 'POST',
+            data: { id_nota: id, nova_data: novaData },
+            dataType: 'json',
+            success: function(res) {
+                if(res.success) {
+                    bootstrap.Modal.getInstance(document.getElementById('modalEditarPagamento')).hide();
+                    mostrarAlerta(res.message, 'success');
+                    carregarDadosCompetencia(); // Recarrega a lista
+                } else {
+                    alert('Erro: ' + res.error);
+                }
+                btn.prop('disabled', false).html(originalHtml);
+            },
+            error: function() {
+                alert('Erro de conexão.');
+                btn.prop('disabled', false).html(originalHtml);
+            }
+        });
     });
 });
 
@@ -675,6 +769,22 @@ function verDetalhes(idNota) {
             mostrarAlerta('Erro ao conectar com o servidor.', 'danger');
         }
     });
+}
+
+function formatMoney(value) {
+    return parseFloat(value).toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+}
+
+function formatDate(dateString) {
+    if (!dateString) return '-';
+    const [year, month, day] = dateString.split('-');
+    return `${day}/${month}/${year}`;
+}
+
+function formatCnpj(v) {
+    if(!v) return '';
+    v = v.replace(/\D/g, "");
+    return v.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, "$1.$2.$3/$4-$5");
 }
 </script>
 

@@ -257,6 +257,42 @@ require_once __DIR__ . '/layout/header.php';
                 font-size: 1.5rem;
             }
         }
+
+    /* Estilos Drag and Drop */
+    .drop-zone {
+        border: 2px dashed var(--primary-color);
+        border-radius: 10px;
+        padding: 30px;
+        text-align: center;
+        background-color: #f8f9fa;
+        transition: all 0.3s ease;
+        cursor: pointer;
+        position: relative;
+    }
+
+    .drop-zone:hover, .drop-zone.dragover {
+        background-color: #e3f2fd;
+        border-color: #0a58ca;
+    }
+
+    .drop-zone-content {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        color: var(--secondary-color);
+    }
+
+    .drop-zone i {
+        font-size: 3rem;
+        margin-bottom: 10px;
+        color: var(--primary-color);
+    }
+
+    .file-preview {
+        margin-top: 15px;
+        display: none;
+    }
     </style>
     <div class="main-container">
         <!-- Cabeçalho -->
@@ -404,6 +440,28 @@ require_once __DIR__ . '/layout/header.php';
                             <div class="input-group">
                                 <span class="input-group-text"><i class="bi bi-file-earmark-text"></i></span>
                                 <input type="text" id="numero_nota" class="form-control" placeholder="Número da NF">
+                            </div>
+                        </div>
+
+                        <!-- Área de Upload Drag and Drop -->
+                        <div class="col-md-12 mt-4">
+                            <label class="form-label">Anexo da Nota Fiscal (Opcional)</label>
+                            <div class="drop-zone" id="dropZone">
+                                <input type="file" id="arquivo_nota" name="arquivo_nota" class="d-none" accept=".pdf,.jpg,.jpeg,.png,.xml">
+                                <div class="drop-zone-content">
+                                    <i class="bi bi-cloud-upload"></i>
+                                    <p class="mb-1 fw-bold">Arraste e solte o arquivo aqui</p>
+                                    <p class="small mb-0">ou clique para selecionar (PDF, JPG, PNG, XML)</p>
+                                </div>
+                                <div class="file-preview" id="filePreview">
+                                    <div class="alert alert-light border d-flex align-items-center justify-content-between mb-0">
+                                        <div class="d-flex align-items-center">
+                                            <i class="bi bi-file-earmark-text fs-4 me-2 text-primary"></i>
+                                            <span id="fileName" class="fw-bold text-dark">nome_arquivo.pdf</span>
+                                        </div>
+                                        <button type="button" class="btn btn-sm btn-outline-danger" id="btnRemoveFile"><i class="bi bi-x"></i></button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -782,6 +840,7 @@ require_once __DIR__ . '/layout/header.php';
             $('#aliq_retencao').val('');
             $('#descricao_servico').val('');
             $('#numero_nota').val('');
+            resetDropZone();
             
             var clearAlerts = true;
             if (data && data.keepAlerts) {
@@ -807,6 +866,71 @@ require_once __DIR__ . '/layout/header.php';
             calcularTotais();
             showAlert('Cálculo realizado com sucesso!', 'success');
         });      
+
+        // --- Lógica Drag and Drop ---
+        const dropZone = $('#dropZone');
+        const fileInput = $('#arquivo_nota');
+        const filePreview = $('#filePreview');
+        const fileName = $('#fileName');
+        const btnRemoveFile = $('#btnRemoveFile');
+        const dropZoneContent = $('.drop-zone-content');
+
+        // Clique na zona abre o seletor
+        dropZone.on('click', function(e) {
+            // Evita recursão infinita se o clique vier do próprio input file (propagação)
+            if ($(e.target).is(fileInput)) return;
+
+            if (e.target !== btnRemoveFile[0] && !$.contains(btnRemoveFile[0], e.target)) {
+                fileInput.click();
+            }
+        });
+
+        // Eventos de arrastar
+        dropZone.on('dragover dragenter', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            $(this).addClass('dragover');
+        });
+
+        dropZone.on('dragleave drop', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            $(this).removeClass('dragover');
+        });
+
+        // Soltar arquivo
+        dropZone.on('drop', function(e) {
+            const files = e.originalEvent.dataTransfer.files;
+            if (files.length > 0) {
+                fileInput[0].files = files;
+                updateFilePreview(files[0]);
+            }
+        });
+
+        // Selecionar via input
+        fileInput.on('change', function() {
+            if (this.files.length > 0) {
+                updateFilePreview(this.files[0]);
+            }
+        });
+
+        // Remover arquivo
+        btnRemoveFile.on('click', function(e) {
+            e.stopPropagation(); // Evita abrir o seletor novamente
+            resetDropZone();
+        });
+
+        function updateFilePreview(file) {
+            fileName.text(file.name);
+            dropZoneContent.addClass('d-none');
+            filePreview.removeClass('d-none').addClass('animate__animated animate__fadeIn');
+        }
+
+        function resetDropZone() {
+            fileInput.val('');
+            dropZoneContent.removeClass('d-none');
+            filePreview.addClass('d-none');
+        }
 
 // Botão Salvar - COM CAMINHO ABSOLUTO CORRETO
 $('#btn_salvar').click(function() {
@@ -835,28 +959,33 @@ $('#btn_salvar').click(function() {
     
     toggleLoading(true, 'Salvando nota...');
     
-    // Preparar dados para salvar
-    var dadosNota = {
-        action: 'salvar_nota',
-        id_fornecedor: fornecedorData.id,
-        id_natureza: $('#id_natureza').val(),
-        valor_bruto: valorBruto,
-        aliquota: aliq,
-        valor_irrf_retido: valorRetencao,
-        valor_liquido: valorLiquido,
-        numero_nota: $('#numero_nota').val() || 'NF-' + new Date().getTime(),
-        descricao_servico: $('#descricao_servico').val()
-    };
+    // Preparar dados para salvar usando FormData para suportar arquivo
+    var formData = new FormData();
+    formData.append('action', 'salvar_nota');
+    formData.append('id_fornecedor', fornecedorData.id);
+    formData.append('id_natureza', $('#id_natureza').val());
+    formData.append('valor_bruto', valorBruto);
+    formData.append('aliquota', aliq);
+    formData.append('valor_irrf_retido', valorRetencao);
+    formData.append('valor_liquido', valorLiquido);
+    formData.append('numero_nota', $('#numero_nota').val() || 'NF-' + new Date().getTime());
+    formData.append('descricao_servico', $('#descricao_servico').val());
+    
+    // Adicionar arquivo se existir
+    var file = $('#arquivo_nota')[0].files[0];
+    if (file) {
+        formData.append('arquivo_nota', file);
+    }
     
     console.log('Enviando dados para:', '/sistema_irrf/app/Controllers/NotaController.php');
-    console.log('Dados:', dadosNota);
     
     // Enviar para o servidor - CAMINHO ABSOLUTO
     $.ajax({
         url: '/sistema_irrf/public/api/nota.php?action=salvar_nota',
         type: 'POST',
-        data: dadosNota,
-        dataType: 'json',
+        data: formData,
+        processData: false, // Necessário para FormData
+        contentType: false, // Necessário para FormData
         success: function(res) {
             toggleLoading(false);
             

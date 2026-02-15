@@ -91,11 +91,12 @@ class R1000Builder {
             
             $infoCadastro->appendChild($contato);
 
-            // infoEFR (Obrigatório para Órgãos Públicos - Classificação 03, 04, 80)
-            // Se não houver dados específicos, assume 'S' (é o próprio ente) para evitar rejeição
-            if (in_array($dadosOrgao['classificacao_tributaria'] ?? '', ['03', '04', '80']) || !empty($dadosOrgao['ide_efr'])) {
+            // infoEFR
+            // Apenas adiciona se houver valor explícito em ide_efr (S ou N)
+            // Isso evita o erro MS1528 quando a natureza jurídica não permite este grupo
+            if (!empty($dadosOrgao['ide_efr'])) {
                 $infoEFR = $dom->createElementNS($ns, 'infoEFR');
-                $ideEFR = $dadosOrgao['ide_efr'] ?? 'S';
+                $ideEFR = $dadosOrgao['ide_efr'];
                 $infoEFR->appendChild($dom->createElementNS($ns, 'ideEFR', $ideEFR));
                 
                 if ($ideEFR === 'N' && !empty($dadosOrgao['cnpj_efr'])) {

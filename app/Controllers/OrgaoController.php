@@ -3,6 +3,7 @@
 
 require_once __DIR__ . '/../Models/Orgao.php';
 require_once __DIR__ . '/BaseController.php';
+require_once __DIR__ . '/../Core/Session.php';
 
 class OrgaoController extends BaseController {
     private $orgaoModel;
@@ -137,6 +138,29 @@ class OrgaoController extends BaseController {
 
             $dados = $this->orgaoModel->buscarPorId($id);
             $this->jsonResponse(['success' => true, 'dados' => $dados]);
+        } catch (Exception $e) {
+            $this->jsonResponse(['success' => false, 'error' => $e->getMessage()], 500);
+        }
+    }
+
+    public function selecionar() {
+        try {
+            Session::start();
+            if (($_SESSION['usuario']['nivel_acesso'] ?? '') !== 'admin') {
+                throw new Exception("Acesso negado.");
+            }
+
+            $id = $_POST['id'] ?? null;
+            if (!$id) throw new Exception("ID não informado.");
+
+            $orgao = $this->orgaoModel->buscarPorId($id);
+            if (!$orgao) throw new Exception("Órgão não encontrado.");
+
+            // Atualiza a sessão com o novo contexto de órgão
+            $_SESSION['usuario']['id_orgao'] = $orgao['id'];
+            $_SESSION['usuario']['orgao_nome'] = $orgao['nome_oficial'];
+
+            $this->jsonResponse(['success' => true, 'message' => 'Órgão selecionado com sucesso.']);
         } catch (Exception $e) {
             $this->jsonResponse(['success' => false, 'error' => $e->getMessage()], 500);
         }

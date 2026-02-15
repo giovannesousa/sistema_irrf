@@ -390,6 +390,15 @@ $usuario = $_SESSION['usuario'] ?? null;
             </div>
 
             <div class="header-actions">
+                <!-- Seletor de Órgão (Apenas Admin) -->
+                <?php if (($usuario['nivel_acesso'] ?? '') === 'admin'): ?>
+                <div class="me-2">
+                    <select id="selectOrgaoHeader" class="form-select form-select-sm border-primary text-primary fw-bold" style="max-width: 450px;" title="Alterar Órgão de Trabalho">
+                        <option value="" disabled>Carregando...</option>
+                    </select>
+                </div>
+                <?php endif; ?>
+
                 <div class="dropdown">
                     <button class="btn btn-light btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">
                         <i class="bi bi-bell"></i>
@@ -433,3 +442,38 @@ $usuario = $_SESSION['usuario'] ?? null;
 
         <!-- Content Wrapper -->
         <div class="content-wrapper">
+
+<script>
+$(document).ready(function() {
+    // Lógica do Seletor de Órgão (Admin)
+    const selectOrgao = $('#selectOrgaoHeader');
+    if (selectOrgao.length > 0) {
+        // Carrega lista de órgãos
+        $.ajax({
+            url: '/sistema_irrf/public/api/api-orgao.php?action=listar',
+            type: 'GET',
+            dataType: 'json',
+            success: function(res) {
+                if (res.success) {
+                    let options = '';
+                    const currentId = '<?php echo $usuario['id_orgao'] ?? ''; ?>';
+                    
+                    res.dados.forEach(orgao => {
+                        const selected = (orgao.id == currentId) ? 'selected' : '';
+                        options += `<option value="${orgao.id}" ${selected}>${orgao.nome_oficial}</option>`;
+                    });
+                    selectOrgao.html(options);
+
+                    // Evento de troca
+                    selectOrgao.on('change', function() {
+                        const newId = $(this).val();
+                        $.post('/sistema_irrf/public/api/api-orgao.php?action=selecionar', { id: newId }, function() {
+                            window.location.reload(); // Recarrega para aplicar o novo contexto
+                        });
+                    });
+                }
+            }
+        });
+    }
+});
+</script>

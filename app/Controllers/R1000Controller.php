@@ -5,6 +5,7 @@ require_once __DIR__ . '/../Core/Database.php';
 require_once __DIR__ . '/../Core/Session.php';
 require_once __DIR__ . '/../Services/Reinf/ReinfConfig.php';
 require_once __DIR__ . '/../Services/Reinf/R1000Builder.php';
+require_once __DIR__ . '/../Services/Reinf/R9000Builder.php';
 require_once __DIR__ . '/../Services/Reinf/ReinfSigner.php';
 require_once __DIR__ . '/../Services/Reinf/ReinfClient.php';
 
@@ -96,7 +97,7 @@ class R1000Controller {
                 ':cpf' => preg_replace('/[^0-9]/', '', $input['contato_cpf']),
                 ':tel' => preg_replace('/[^0-9]/', '', $input['contato_telefone']),
                 ':email' => $input['contato_email'],
-                ':ide_efr' => $input['ide_efr'] ?? 'S',
+                ':ide_efr' => !empty($input['ide_efr']) ? $input['ide_efr'] : null,
                 ':cnpj_efr' => !empty($input['cnpj_efr']) ? preg_replace('/[^0-9]/', '', $input['cnpj_efr']) : null,
                 ':id' => $idOrgao
             ]);
@@ -262,6 +263,124 @@ class R1000Controller {
         }
     }
 
+    public function resetarLocal() {
+        try {
+            $idOrgao = $_SESSION['usuario']['id_orgao'] ?? null;
+            if (!$idOrgao) throw new Exception("Órgão não identificado.");
+
+            $this->db->beginTransaction();
+
+            // 1. Resetar flags na tabela orgaos
+            $this->db->prepare("UPDATE orgaos SET r1000_enviado = 0, r1000_recibo = NULL, r1000_data_envio = NULL WHERE id = ?")->execute([$idOrgao]);
+
+            // 2. Remover histórico R-1000
+            $this->db->prepare("DELETE FROM reinf_r1000 WHERE id_orgao = ?")->execute([$idOrgao]);
+
+            // 3. Remover eventos periódicos (R-4020, R-9000, R-4099) e seus vínculos
+            // Busca IDs dos eventos através dos lotes do órgão
+            $sqlIds = "SELECT e.id FROM reinf_eventos e INNER JOIN reinf_lotes l ON e.id_lote = l.id WHERE l.id_orgao = ?";
+            $stmt = $this->db->prepare($sqlIds);
+            $stmt->execute([$idOrgao]);
+            $ids = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+            if (!empty($ids)) {
+                $inQuery = implode(',', array_map('intval', $ids)); // Sanitiza IDs
+                $this->db->exec("DELETE FROM reinf_evento_pagamentos WHERE id_evento IN ($inQuery)");
+                $this->db->exec("DELETE FROM reinf_eventos WHERE id IN ($inQuery)");
+            }
+
+            // 4. Remover Lotes
+            $this->db->prepare("DELETE FROM reinf_lotes WHERE id_orgao = ?")->execute([$idOrgao]);
+
+            $this->db->commit();
+            $this->jsonResponse(['success' => true, 'message' => 'Base local resetada com sucesso! Todos os registros de envio foram removidos.']);
+
+        } catch (Exception $e) {
+            $this->db->rollBack();
+            $this->jsonError($e->getMessage());
+        }
+    }
+
+    public function limparEventosReceita() {
+        try {
+            // Aumenta o tempo limite de execução para processar muitos eventos sem timeout
+            set_time_limit(0);
+
+            if (!$this->reinfConfig) throw new Exception("Certificado digital não configurado.");
+            $idOrgao = $_SESSION['usuario']['id_orgao'] ?? null;
+
+            // 1. Busca todos os eventos periódicos ativos (R-4020) que possuem recibo
+            $sql = "SELECT e.id, e.tipo_evento, e.numero_recibo, e.per_apuracao 
+                    FROM reinf_eventos e
+                    JOIN reinf_lotes l ON e.id_lote = l.id
+                    WHERE l.id_orgao = ? 
+                    AND e.tipo_evento = 'R-4020'
+                    AND e.numero_recibo IS NOT NULL
+                    AND e.numero_recibo != ''";
+            
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute([$idOrgao]);
+            $eventos = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            if (empty($eventos)) {
+                $this->jsonResponse(['success' => false, 'message' => 'Não foram encontrados eventos R-4020 ativos na base local para exclusão. Tente excluir o R-1000 diretamente.']);
+            }
+
+            $builder = new R9000Builder();
+            $signer = new ReinfSigner($this->reinfConfig);
+            $client = new ReinfClient($this->reinfConfig);
+            $dadosOrgao = $this->getDadosOrgao($idOrgao);
+            $dadosOrgao['ambiente'] = 2;
+
+            $enviados = 0;
+            $lotesEnviados = 0;
+
+            // Agrupa eventos em lotes de 50 (limite da Receita) para envio em massa
+            $chunks = array_chunk($eventos, 50);
+
+            foreach ($chunks as $chunk) {
+                $xmlsAssinados = [];
+                $idsParaAtualizar = [];
+
+                foreach ($chunk as $evento) {
+                    // Gera XML de Exclusão (R-9000)
+                    $resBuild = $builder->build($dadosOrgao, $evento['tipo_evento'], $evento['numero_recibo'], $evento['per_apuracao']);
+                    $xmlAssinado = $signer->sign($resBuild['xml'], 'evtExclusao');
+                    
+                    $xmlsAssinados[] = $xmlAssinado;
+                    $idsParaAtualizar[] = $evento['id'];
+                }
+
+                if (empty($xmlsAssinados)) continue;
+
+                // Monta o lote com até 50 eventos
+                $xmlLote = $this->montarEnvelopeLote($dadosOrgao['cnpj'], $xmlsAssinados);
+                
+                // Envia para a Receita
+                $retorno = $client->enviarLote($xmlLote);
+                
+                // Verifica se gerou protocolo (envio com sucesso)
+                $domRet = new DOMDocument();
+                $domRet->loadXML($retorno['response']);
+                $protocolo = $domRet->getElementsByTagName('protocoloEnvio')->item(0)->nodeValue ?? null;
+                
+                if ($protocolo) {
+                    // Marca como excluído localmente em massa para liberar a interface
+                    $inQuery = implode(',', array_fill(0, count($idsParaAtualizar), '?'));
+                    $this->db->prepare("UPDATE reinf_eventos SET status = 'excluido' WHERE id IN ($inQuery)")->execute($idsParaAtualizar);
+                    
+                    $enviados += count($idsParaAtualizar);
+                    $lotesEnviados++;
+                }
+            }
+
+            $this->jsonResponse(['success' => true, 'message' => "Comando de exclusão enviado para $enviados eventos R-4020 (em $lotesEnviados lotes). Aguarde o processamento da Receita e tente excluir o R-1000 novamente."]);
+
+        } catch (Exception $e) {
+            $this->jsonError($e->getMessage());
+        }
+    }
+
     public function consultarLoteR1000() {
         try {
             if (!$this->reinfConfig) throw new Exception("Certificado digital não configurado para este órgão.");
@@ -357,8 +476,12 @@ class R1000Controller {
                 if ($nodeDesc) $msgErro = $nodeDesc->nodeValue;
 
                 // Erro do evento específico
+                $nodeCodResp = $xpath->query("//*[local-name()='codResp']")->item(0);
                 $nodeDscResp = $xpath->query("//*[local-name()='dscResp']")->item(0);
-                if ($nodeDscResp) $msgErro = $nodeDscResp->nodeValue;
+                
+                if ($nodeDscResp) {
+                    $msgErro = $nodeDscResp->nodeValue;
+                }
 
                 $this->db->prepare("UPDATE reinf_lotes SET status = 'erro', xml_retorno = ? WHERE id = ?")->execute([$retornoApi['response'], $idLote]);
                 

@@ -31,6 +31,28 @@ require_once __DIR__ . '/../layout/header.php';
 
     <div id="alertContainer"></div>
 
+    <!-- Card de Controle de Período (R-4099) -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card shadow border-0">
+                <div class="card-body d-flex justify-content-between align-items-center py-3">
+                    <div>
+                        <h5 class="card-title text-primary mb-0"><i class="fas fa-lock me-2"></i>Controle de Competência (R-4099) <span id="badgeStatusPeriodo" class="badge bg-secondary ms-2">Verificando...</span></h5>
+                        <p class="text-muted mb-0 small">Encerre o movimento do período após enviar todos os eventos R-4020.</p>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button id="btnFecharPeriodo" onclick="enviarFechamento(1)" class="btn btn-danger text-white">
+                            <i class="fas fa-lock me-2"></i>Fechar Período
+                        </button>
+                        <button id="btnReabrirPeriodo" onclick="enviarFechamento(0)" class="btn btn-outline-secondary" style="display: none;">
+                            <i class="fas fa-lock-open me-2"></i>Reabrir Competência
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="row">
         <div class="col-xl-6 mb-4">
             <div class="card shadow border-0 h-100">
@@ -77,23 +99,107 @@ require_once __DIR__ . '/../layout/header.php';
                 <div class="card-header bg-white border-bottom-0 py-3 d-flex justify-content-between">
                     <h5 class="card-title text-secondary mb-0"><i class="fas fa-history me-2"></i>Histórico de
                         Transmissões</h5>
-                    <span class="badge bg-light text-dark border">Últimos 50 registros</span>
+                    <span class="badge bg-light text-dark border">Últimos 100 registros</span>
                 </div>
                 <div class="card-body p-0 table-responsive scrollable-table-container">
                     <table class="table table-striped align-middle mb-0" id="tabelaHistorico">
                         <thead class="table-light">
                             <tr>
                                 <th class="ps-4">Protocolo / Data</th>
+                                <th>Evento</th>
                                 <th class="text-center">Status</th>
                                 <th class="text-end pe-4">Ações</th>
                             </tr>
                         </thead>
                         <tbody id="listaHistorico">
                             <tr>
-                                <td colspan="3" class="text-center py-4 text-muted">Nenhum histórico encontrado.</td>
+                                <td colspan="4" class="text-center py-4 text-muted">Nenhum histórico encontrado.</td>
                             </tr>
                         </tbody>
                     </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Resumo de Envios (Sucesso) -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card shadow border-0">
+                <div class="card-header bg-white border-bottom-0 py-3">
+                    <h5 class="card-title text-success mb-0"><i class="fas fa-check-circle me-2"></i>Resumo de Envios (Sucesso)</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row mb-3 text-center">
+                        <div class="col-md-4">
+                            <div class="p-3 border rounded bg-light">
+                                <small class="text-muted text-uppercase fw-bold">Total Bruto</small>
+                                <h4 class="text-dark fw-bold mb-0" id="resumoTotalBruto">R$ 0,00</h4>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="p-3 border rounded bg-light">
+                                <small class="text-muted text-uppercase fw-bold">Total Retido (IR)</small>
+                                <h4 class="text-danger fw-bold mb-0" id="resumoTotalRetido">R$ 0,00</h4>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="p-3 border rounded bg-light">
+                                <small class="text-muted text-uppercase fw-bold">Total Líquido</small>
+                                <h4 class="text-success fw-bold mb-0" id="resumoTotalLiquido">R$ 0,00</h4>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Fornecedor</th>
+                                    <th>CNPJ</th>
+                                    <th>Recibo</th>
+                                    <th class="text-center">Qtd. Pagtos</th>
+                                    <th class="text-end">Valor Bruto</th>
+                                    <th class="text-end">Valor Retido</th>
+                                </tr>
+                            </thead>
+                            <tbody id="listaResumo">
+                                <tr><td colspan="6" class="text-center py-4 text-muted">Carregando...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Extrato de Fechamento (R-9015) -->
+    <div class="row mb-4" id="cardExtratoFechamento" style="display: none;">
+        <div class="col-12">
+            <div class="card shadow border-0 border-start border-4 border-dark">
+                <div class="card-header bg-white border-bottom-0 py-3 d-flex justify-content-between align-items-center">
+                    <h5 class="card-title text-dark mb-0"><i class="fas fa-file-invoice-dollar me-2"></i>Extrato de Fechamento (R-9015) - DCTFWeb</h5>
+                    <div>
+                        <button class="btn btn-sm btn-outline-secondary me-2" onclick="verXmlFechamento()" title="Ver XML Original">
+                            <i class="fas fa-code"></i> XML
+                        </button>
+                        <span class="badge bg-dark" id="reciboFechamento"></span>
+                    </div>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-striped mb-0">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th>Código Receita (CR)</th>
+                                    <th>Apuração</th>
+                                    <th class="text-end">Valor Apurado (DCTFWeb)</th>
+                                    <th class="text-end">Valor Suspenso</th>
+                                </tr>
+                            </thead>
+                            <tbody id="listaExtratoFechamento"></tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>
@@ -171,6 +277,9 @@ require_once __DIR__ . '/../layout/header.php';
                 if (res.success) {
                     renderPendencias(res.pendencias);
                     renderHistorico(res.historico);
+                    renderResumo(res.resumo);
+                    atualizarBotoesPeriodo(res.status_periodo); // Atualiza botões Fechar/Reabrir
+                    carregarExtratoFechamento(); // Carrega o extrato R-9015 se houver fechamento
                 } else {
                     showAlert('danger', 'Erro ao carregar dados: ' + res.error);
                 }
@@ -181,6 +290,23 @@ require_once __DIR__ . '/../layout/header.php';
                 showAlert('danger', 'Erro de conexão com o servidor.');
             }
         });
+    }
+
+    function atualizarBotoesPeriodo(status) {
+        const btnFechar = $('#btnFecharPeriodo');
+        const btnReabrir = $('#btnReabrirPeriodo');
+        const badge = $('#badgeStatusPeriodo');
+
+        if (status === 'Fechado') {
+            btnFechar.hide();
+            btnReabrir.show();
+            badge.removeClass('bg-secondary bg-success').addClass('bg-danger').text('FECHADO');
+        } else {
+            // Aberto
+            btnFechar.show();
+            btnReabrir.hide();
+            badge.removeClass('bg-secondary bg-danger').addClass('bg-success').text('ABERTO');
+        }
     }
 
     function validarLoteLocal() {
@@ -320,6 +446,44 @@ require_once __DIR__ . '/../layout/header.php';
         });
     }
 
+    function enviarFechamento(acao) {
+        const periodo = $('#filtroPeriodo').val();
+        const acaoTexto = acao === 1 ? 'FECHAR' : 'REABRIR';
+        
+        if (!confirm(`Deseja realmente ${acaoTexto} o movimento do período ${periodo}?`)) return;
+
+        toggleLoading(true);
+
+        $.ajax({
+            url: '/sistema_irrf/public/api/api-reinf.php?action=enviar_fechamento',
+            method: 'POST',
+            data: JSON.stringify({
+                periodo: periodo,
+                acao: acao
+            }),
+            contentType: 'application/json',
+            dataType: 'json',
+            success: function (res) {
+                toggleLoading(false);
+                if (res.success) {
+                    showAlert('success', `${res.message} Protocolo: ${res.protocolo}`);
+                    carregarDados();
+                } else {
+                    showAlert('danger', res.error);
+                }
+            },
+            error: function (xhr) {
+                toggleLoading(false);
+                let msg = 'Erro desconhecido.';
+                try {
+                    let json = JSON.parse(xhr.responseText);
+                    msg = json.error;
+                } catch (e) { msg = xhr.responseText; }
+                showAlert('danger', 'Falha no envio: ' + msg);
+            }
+        });
+    }
+
     // --- RENDERIZAÇÃO ---
 
     function renderPendencias(lista) {
@@ -358,11 +522,18 @@ require_once __DIR__ . '/../layout/header.php';
         let html = '';
 
         if (lista.length === 0) {
-            html = '<tr><td colspan="3" class="text-center py-4 text-muted">Nenhum envio registrado.</td></tr>';
+            html = '<tr><td colspan="4" class="text-center py-4 text-muted">Nenhum envio registrado.</td></tr>';
         } else {
             lista.forEach(l => {
                 let statusBadge = '';
                 let btnAcao = '';
+                
+                // Tratamento do nome do evento
+                let nomeEvento = l.tipo_evento || 'Desconhecido';
+                if (nomeEvento === 'R-4020') nomeEvento = 'Pagamentos (R-4020)';
+                else if (nomeEvento === 'R-9000') nomeEvento = 'Exclusão (R-9000)';
+                else if (nomeEvento.indexOf('Reabertura') !== -1 || nomeEvento.indexOf('-Reab') !== -1) nomeEvento = 'Reabertura (R-4099)';
+                else if (nomeEvento.indexOf('R-4099') !== -1) nomeEvento = 'Fechamento (R-4099)';
 
                 // Lógica de Status
                 switch (l.status) {
@@ -393,6 +564,7 @@ require_once __DIR__ . '/../layout/header.php';
                         <div class="fw-bold text-dark">Protocolo: ${l.protocolo || 'N/D'}</div>
                         <div class="small text-muted"><i class="far fa-calendar-alt me-1"></i>${dataEnvio}</div>
                     </td>
+                    <td><span class="badge bg-light text-dark border">${nomeEvento}</span></td>
                     <td class="text-center">${statusBadge}</td>
                     <td class="text-end pe-4">${btnAcao}</td>
                 </tr>
@@ -401,6 +573,103 @@ require_once __DIR__ . '/../layout/header.php';
         }
 
         $('#listaHistorico').html(html);
+    }
+
+    let xmlFechamentoAtual = '';
+
+    function carregarExtratoFechamento() {
+        const periodo = $('#filtroPeriodo').val();
+        
+        $.ajax({
+            url: '/sistema_irrf/public/api/reinf.php?action=buscar_extrato_fechamento',
+            method: 'GET',
+            data: { periodo: periodo },
+            dataType: 'json',
+            success: function (res) {
+                if (res.success) {
+                    xmlFechamentoAtual = res.xml_raw || '';
+                    let html = '';
+                    let totalReceita = 0;
+
+                    if (res.extrato && res.extrato.length > 0) {
+                        res.extrato.forEach(item => {
+                            html += `
+                                <tr>
+                                    <td class="fw-bold font-monospace">${item.cr}</td>
+                                    <td>${item.tipo}</td>
+                                    <td class="text-end fw-bold text-dark">${item.valor}</td>
+                                    <td class="text-end text-muted">${item.suspenso}</td>
+                                </tr>
+                            `;
+                            // Soma valores da Receita para comparação
+                            totalReceita += parseFloat(item.valor.replace('.', '').replace(',', '.'));
+                        });
+                    } else {
+                        html = '<tr><td colspan="4" class="text-center py-4 text-muted"><i class="fas fa-check-circle me-2"></i>Fechamento processado com sucesso. Sem valores apurados para DCTFWeb (Sem movimento).</td></tr>';
+                    }
+
+                    // --- VERIFICAÇÃO DE DIVERGÊNCIA ---
+                    // Pega o total local calculado no card de Resumo
+                    let textoLocal = $('#resumoTotalRetido').text(); // Ex: "R$ 1.000,00"
+                    let totalLocal = parseFloat(textoLocal.replace('R$', '').replace(/\./g, '').replace(',', '.').trim()) || 0;
+
+                    // Se tem valor local mas a Receita diz 0, mostra alerta
+                    if (totalLocal > 0 && totalReceita === 0) {
+                        html += '<tr><td colspan="4" class="table-warning text-center text-danger fw-bold"><i class="fas fa-exclamation-triangle me-2"></i>ATENÇÃO: O sistema local apurou retenções (' + textoLocal + '), mas o retorno da Receita está zerado. <br>Recomendação: Reabra o período, verifique se os eventos R-4020 estão processados e envie o fechamento novamente.</td></tr>';
+                    }
+
+                    $('#listaExtratoFechamento').html(html);
+                    $('#reciboFechamento').text('Recibo: ' + (res.recibo || 'N/D'));
+                    $('#cardExtratoFechamento').fadeIn();
+                } else {
+                    $('#cardExtratoFechamento').hide();
+                }
+            },
+            error: function () {
+                $('#cardExtratoFechamento').hide();
+            }
+        });
+    }
+
+    function verXmlFechamento() {
+        $('#conteudoDetalhes').text(xmlFechamentoAtual);
+        new bootstrap.Modal(document.getElementById('modalDetalhes')).show();
+    }
+
+    function renderResumo(lista) {
+        let html = '';
+        let totalBruto = 0;
+        let totalRetido = 0;
+
+        if (!lista || lista.length === 0) {
+            html = '<tr><td colspan="6" class="text-center py-4 text-muted">Nenhum envio com sucesso neste período.</td></tr>';
+        } else {
+            lista.forEach(r => {
+                let bruto = parseFloat(r.total_bruto);
+                let retido = parseFloat(r.total_retido);
+                
+                totalBruto += bruto;
+                totalRetido += retido;
+
+                html += `
+                <tr>
+                    <td><div class="fw-bold text-dark">${r.razao_social}</div></td>
+                    <td>${formatCnpj(r.cnpj)}</td>
+                    <td><small class="text-muted font-monospace">${r.numero_recibo}</small></td>
+                    <td class="text-center">${r.qtd_pagamentos}</td>
+                    <td class="text-end">${formatMoney(bruto)}</td>
+                    <td class="text-end text-danger">${formatMoney(retido)}</td>
+                </tr>
+                `;
+            });
+        }
+
+        let totalLiquido = totalBruto - totalRetido;
+
+        $('#listaResumo').html(html);
+        $('#resumoTotalBruto').text(formatMoney(totalBruto));
+        $('#resumoTotalRetido').text(formatMoney(totalRetido));
+        $('#resumoTotalLiquido').text(formatMoney(totalLiquido));
     }
 
     function verDetalhes(idLote) {
@@ -414,7 +683,7 @@ require_once __DIR__ . '/../layout/header.php';
                 toggleLoading(false);
                 if (res.success) {
                     let html = '<div class="table-responsive"><table class="table table-bordered table-sm">';
-                    html += '<thead class="table-light"><tr><th>Fornecedor</th><th>Status</th><th>Detalhe (Recibo ou Erro)</th></tr></thead><tbody>';
+                    html += '<thead class="table-light"><tr><th>ID</th><th>Lote</th><th>Fornecedor</th><th>Status</th><th>Detalhe (Recibo ou Erro)</th></tr></thead><tbody>';
 
                     res.eventos.forEach(evt => {
                         let statusColor = evt.status === 'sucesso' ? 'text-success' : 'text-danger';
@@ -425,6 +694,8 @@ require_once __DIR__ . '/../layout/header.php';
 
                         html += `
                         <tr>
+                            <td>${evt.id}</td>
+                            <td>${evt.id_lote}</td>
                             <td>
                                 <div class="fw-bold">${evt.razao_social}</div>
                                 <div class="small text-muted">${formatCnpj(evt.cnpj)}</div>

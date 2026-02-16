@@ -206,6 +206,9 @@ require_once __DIR__ . '/layout/header.php';
                                         </button>
                                         
                                         <?php if ($nota['status_pagamento'] !== 'pago' && !$isInativa): ?>
+                                            <a href="/sistema_irrf/public/gerar-nota?id=<?php echo $nota['id']; ?>" class="btn btn-outline-primary action-btn me-1" title="Editar Nota">
+                                                <i class="bi bi-pencil-fill" style="font-size: 0.9rem;"></i>
+                                            </a>
                                             <button class="btn btn-outline-danger action-btn" onclick="inativarNota(<?php echo $nota['id']; ?>, '<?php echo $nota['numero_nota']; ?>')" title="Inativar/Excluir">
                                                 <i class="bi bi-trash-fill" style="font-size: 0.9rem;"></i>
                                             </button>

@@ -282,6 +282,7 @@ $usuario = $_SESSION['usuario'] ?? null;
                     </a>
                 </div>
 
+                <?php if (($usuario['nivel_acesso'] ?? '') === 'admin'): ?>
                 <div class="nav-item">
                     <a class="nav-link <?php echo ($pagina_atual == 'orgao') ? 'active' : ''; ?>"
                         href="/sistema_irrf/public/orgao.php">
@@ -289,6 +290,7 @@ $usuario = $_SESSION['usuario'] ?? null;
                         <span>Órgão</span>
                     </a>
                 </div>
+                <?php endif; ?>
 
                 <div class="nav-item">
                     <a class="nav-link <?php echo ($pagina_atual == 'gerar-nota') ? 'active' : ''; ?>"
@@ -310,6 +312,7 @@ $usuario = $_SESSION['usuario'] ?? null;
                     </a>
                 </div>
 
+                <?php if (($usuario['nivel_acesso'] ?? '') === 'admin'): ?>
                 <div class="nav-item">
                     <a class="nav-link <?php echo ($pagina_atual == 'reinf') ? 'active' : ''; ?>"
                         href="/sistema_irrf/public/reinf">
@@ -325,6 +328,7 @@ $usuario = $_SESSION['usuario'] ?? null;
                         <span>R-1000 - Cadastro</span>
                     </a>
                 </div>
+                <?php endif; ?>
 
                 <div class="nav-item">
                     <a class="nav-link <?php echo ($pagina_atual == 'relatorios') ? 'active' : ''; ?>"
@@ -334,6 +338,7 @@ $usuario = $_SESSION['usuario'] ?? null;
                     </a>
                 </div>
 
+                <?php if (($usuario['nivel_acesso'] ?? '') === 'admin'): ?>
                 <div class="nav-item">
                     <a class="nav-link <?php echo ($pagina_atual == 'fornecedores') ? 'active' : ''; ?>"
                         href="/sistema_irrf/public/fornecedores.php">
@@ -341,6 +346,7 @@ $usuario = $_SESSION['usuario'] ?? null;
                         <span>Fornecedores</span>
                     </a>
                 </div>
+                <?php endif; ?>
 
                 <?php if (($usuario['nivel_acesso'] ?? '') === 'admin'): ?>
                     <div class="nav-item">

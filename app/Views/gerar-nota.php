@@ -347,6 +347,8 @@ require_once __DIR__ . '/layout/header.php';
                 </div>
 
                 <!-- Seção 1: Fornecedor -->
+                <!-- Campo oculto para ID da nota em edição -->
+                <input type="hidden" id="id_nota_edit">
                 <div class="form-section">
                     <h5 class="section-title">
                         <i class="bi bi-building"></i> Dados do Fornecedor
@@ -685,7 +687,8 @@ require_once __DIR__ . '/layout/header.php';
                             '</span>'
                         );
                         
-                        if (res.dados.regime_tributario.toLowerCase() !== 'simples_nacional') {
+                        var regimeCod = res.dados.regime_tributario.toLowerCase();
+                        if (regimeCod !== 'simples_nacional' && regimeCod !== 'mei') {
                             $('#secao_calculo').removeClass('d-none').addClass('animate__animated animate__fadeIn');
                             $('#btn_calcular').prop('disabled', false);
                             carregarNaturezas();
@@ -693,7 +696,7 @@ require_once __DIR__ . '/layout/header.php';
                         } else {
                             $('#secao_calculo').addClass('d-none');
                             $('#secao_resultado').addClass('d-none');
-                            showAlert('Fornecedor do Simples Nacional: Não há retenção de IRRF conforme legislação.', 'info');
+                            showAlert('Fornecedor MEI ou Simples Nacional: Não há retenção de IRRF conforme legislação.', 'info');
                         }
                     } else {
                         showAlert('Fornecedor não encontrado no cadastro. Verifique o CNPJ ou cadastre-o primeiro.', 'warning');
@@ -963,6 +966,12 @@ $('#btn_salvar').click(function() {
     var formData = new FormData();
     formData.append('action', 'salvar_nota');
     formData.append('id_fornecedor', fornecedorData.id);
+    
+    // Adiciona ID se for edição
+    if ($('#id_nota_edit').val()) {
+        formData.append('id_nota', $('#id_nota_edit').val());
+    }
+
     formData.append('id_natureza', $('#id_natureza').val());
     formData.append('valor_bruto', valorBruto);
     formData.append('aliquota', aliq);
@@ -1072,6 +1081,88 @@ $('#btn_salvar').click(function() {
                 $(this).removeClass('is-invalid');
             }
         });
+
+        // ==========================================
+        // LÓGICA DE EDIÇÃO (Carregar dados da URL)
+        // ==========================================
+        const urlParams = new URLSearchParams(window.location.search);
+        const editId = urlParams.get('id');
+        
+        if (editId) {
+            toggleLoading(true, 'Carregando dados da nota...');
+            $('h3.mb-0').html('<i class="bi bi-pencil-square me-2"></i>Editar Nota Fiscal');
+            
+            $.getJSON('/sistema_irrf/public/api/nota.php', {
+                action: 'buscar_nota',
+                id: editId
+            }, function(res) {
+                if (res.success) {
+                    const nota = res.nota;
+                    
+                    // Preenche ID oculto
+                    $('#id_nota_edit').val(nota.id);
+                    
+                    // Preenche campos básicos
+                    $('#cnpj_busca').val(nota.cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, "$1.$2.$3/$4-$5"));
+                    $('#valor_nota').val(nota.valor_bruto_formatado.replace('R$ ', ''));
+                    $('#numero_nota').val(nota.numero_nota);
+                    $('#descricao_servico').val(nota.descricao_servico);
+                    
+                    // Busca dados do fornecedor para preencher a UI e carregar naturezas
+                    $.getJSON('/sistema_irrf/app/Controllers/NotaController.php', {
+                        action: 'buscar_fornecedor',
+                        cnpj: nota.cnpj.replace(/\D/g, '')
+                    }, function(resForn) {
+                        if (resForn.success) {
+                            fornecedorData = resForn.dados;
+                            $('#razao_social').val(resForn.dados.razao_social);
+                            $('#regime_txt').val(resForn.dados.regime_tributario.toUpperCase());
+                            
+                            // Badge do regime
+                            var regime = resForn.dados.regime_tributario.toUpperCase();
+                            var badgeClass = 'badge-outros';
+                            if (regime.toLowerCase().includes('simples')) badgeClass = 'badge-simples';
+                            else if (regime.toLowerCase().includes('presumido')) badgeClass = 'badge-presumido';
+                            else if (regime.toLowerCase().includes('real')) badgeClass = 'badge-real';
+                            
+                            $('#mensagem_regime').html('<span class="badge ' + badgeClass + ' badge-regime"><i class="bi bi-shield me-1"></i>' + regime + '</span>');
+                            
+                            $('#secao_calculo').removeClass('d-none');
+                            $('#btn_calcular').prop('disabled', false);
+                            
+                            // Carrega naturezas e seleciona a correta
+                            $.getJSON('/sistema_irrf/app/Controllers/NotaController.php', { 
+                                action: 'listar_naturezas' 
+                            }, function(data) {
+                                toggleLoading(false);
+                                if (data && data.length > 0) {
+                                    var html = '<option value="">Selecione uma natureza...</option>';
+                                    $.each(data, function(i, item) {
+                                        html += '<option value="' + item.id + '" data-aliq="' + item.aliquota_padrao + '" data-codigo="' + item.codigo_rfb + '" data-descricao="' + item.descricao + '">' + item.codigo_rfb + ' - ' + item.descricao + ' (' + item.aliquota_padrao + '%)' + '</option>';
+                                    });
+                                    $('#id_natureza').html(html);
+                                    
+                                    // Seleciona a natureza da nota
+                                    $('#id_natureza').val(nota.id_natureza_servico);
+                                    
+                                    // Executa cálculo para mostrar resultados
+                                    calcularTotais();
+                                    
+                                    // Atualiza texto do botão
+                                    $('#btn_salvar').html('<i class="bi bi-save me-2"></i>Atualizar Nota');
+                                }
+                            });
+                        }
+                    });
+                } else {
+                    toggleLoading(false);
+                    showAlert('Erro ao carregar nota: ' + res.error, 'danger');
+                }
+            }).fail(function() {
+                toggleLoading(false);
+                showAlert('Erro de conexão ao buscar nota.', 'danger');
+            });
+        }
     });
     </script>
 <?php require_once __DIR__ . '/layout/footer.php'; ?>

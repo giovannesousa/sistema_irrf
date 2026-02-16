@@ -45,6 +45,64 @@ if ($action == 'buscar_fornecedor') {
         $model = new Fornecedor();
         $dados = $model->buscarPorCnpj($cnpj);
         
+        // Se não encontrar na base local, busca na API externa e cadastra
+        if (!$dados) {
+            $cnpjLimpo = preg_replace('/[^0-9]/', '', $cnpj);
+            
+            // API Open CNPJ
+            $url = "https://open.cnpja.com/office/{$cnpjLimpo}";
+            
+            $ch = curl_init();
+            curl_setopt($ch, CURLOPT_URL, $url);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 5); // Timeout curto para não travar
+            
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+            
+            if ($httpCode == 200 && $response) {
+                $apiData = json_decode($response, true);
+                
+                if (isset($apiData['taxId'])) {
+                    // Mapeamento de dados da API
+                    $razaoSocial = mb_strtoupper($apiData['company']['name'] ?? $apiData['alias'] ?? '');
+                    $nomeFantasia = mb_strtoupper($apiData['alias'] ?? $razaoSocial);
+                    
+                    // Lógica de Regime Tributário baseada no Enum do banco
+                    // enum('simples_nacional','lucro_presumido','lucro_real','mei','outros')
+                    $regime = 'outros'; // Padrão seguro
+                    
+                    if (!empty($apiData['company']['simei']['optant'])) {
+                        $regime = 'mei';
+                    } elseif (!empty($apiData['company']['simples']['optant'])) {
+                        $regime = 'simples_nacional';
+                    }
+                    // Nota: A API não distingue facilmente Lucro Presumido de Real, mantemos 'outros' ou o usuário ajusta.
+                    
+                    // Inserir no banco local automaticamente
+                    $db = Database::getInstance()->getConnection();
+                    $sqlInsert = "INSERT INTO fornecedores (
+                        cnpj, razao_social, nome_fantasia, regime_tributario, ativo, created_at
+                    ) VALUES (
+                        :cnpj, :razao, :fantasia, :regime, 1, NOW()
+                    )";
+                    
+                    $stmtIns = $db->prepare($sqlInsert);
+                    $stmtIns->execute([
+                        ':cnpj' => $cnpjLimpo,
+                        ':razao' => substr($razaoSocial, 0, 255),
+                        ':fantasia' => substr($nomeFantasia, 0, 255),
+                        ':regime' => $regime
+                    ]);
+                    
+                    // Busca novamente o registro recém criado para retornar com o ID correto
+                    $dados = $model->buscarPorCnpj($cnpjLimpo);
+                }
+            }
+        }
+
         if ($dados) {
             // Formatar dados para resposta
             $response = [
@@ -125,6 +183,9 @@ if ($action == 'salvar_nota') {
             $input = $_POST;
         }
         
+        // Verificar se é edição
+        $idNota = $input['id_nota'] ?? null;
+
         // Validar campos obrigatórios
         $camposObrigatorios = ['id_fornecedor', 'id_natureza', 'valor_bruto', 'aliquota', 'valor_irrf_retido'];
         $faltantes = [];
@@ -144,6 +205,16 @@ if ($action == 'salvar_nota') {
             exit;
         }
         
+        // Validar Regime Tributário (Simples Nacional e MEI não retêm IRRF)
+        $db = Database::getInstance()->getConnection();
+        $stmtRegime = $db->prepare("SELECT regime_tributario FROM fornecedores WHERE id = ?");
+        $stmtRegime->execute([intval($input['id_fornecedor'])]);
+        $regimeFornecedor = $stmtRegime->fetchColumn();
+
+        if (in_array($regimeFornecedor, ['simples_nacional', 'mei'])) {
+            throw new Exception('Fornecedores MEI ou Simples Nacional não sofrem retenção de IRRF. A nota não pode ser gravada.');
+        }
+
         // Obter dados do usuário logado
         $usuario = $_SESSION['usuario'] ?? null;
         if (!$usuario) {
@@ -197,35 +268,71 @@ if ($action == 'salvar_nota') {
             'caminho_anexo' => $caminhoAnexo
         ];
         
-        // Salvar no banco
-        $db = Database::getInstance()->getConnection();
-        
-        // Preparar SQL
-        $campos = implode(', ', array_keys($dadosNota));
-        $valores = ':' . implode(', :', array_keys($dadosNota));
-        
-        $sql = "INSERT INTO notas_fiscais ({$campos}) VALUES ({$valores})";
-        $stmt = $db->prepare($sql);
-        
-        // Bind dos valores
-        foreach ($dadosNota as $key => $value) {
-            $stmt->bindValue(':' . $key, $value);
+        // Se for edição e não enviou arquivo novo, remove do array para não sobrescrever
+        if ($idNota && $caminhoAnexo === null) {
+            unset($dadosNota['caminho_anexo']);
         }
+
+        // Salvar no banco
         
-        // Executar
-        if ($stmt->execute()) {
-            $idNota = $db->lastInsertId();
+        if ($idNota) {
+            // --- UPDATE ---
+            // Verifica se a nota existe, pertence ao órgão e está pendente
+            $checkSql = "SELECT id FROM notas_fiscais WHERE id = :id AND id_orgao = :id_orgao AND status_pagamento = 'pendente'";
+            $checkStmt = $db->prepare($checkSql);
+            $checkStmt->execute([':id' => $idNota, ':id_orgao' => $dadosNota['id_orgao']]);
             
-            header('Content-Type: application/json');
-            echo json_encode([
+            if (!$checkStmt->fetch()) {
+                throw new Exception("Nota não encontrada, não pertence ao órgão ou já foi paga (não pode ser editada).");
+            }
+
+            $sets = [];
+            foreach (array_keys($dadosNota) as $key) {
+                $sets[] = "$key = :$key";
+            }
+            $sets[] = "updated_at = NOW()";
+            
+            $sql = "UPDATE notas_fiscais SET " . implode(', ', $sets) . " WHERE id = :id_nota_update";
+            $stmt = $db->prepare($sql);
+            
+            foreach ($dadosNota as $key => $value) {
+                $stmt->bindValue(':' . $key, $value);
+            }
+            $stmt->bindValue(':id_nota_update', $idNota);
+            
+            if (!$stmt->execute()) {
+                throw new Exception('Erro ao atualizar nota: ' . implode(', ', $stmt->errorInfo()));
+            }
+            
+            $msg = 'Nota fiscal atualizada com sucesso!';
+
+        } else {
+            // --- INSERT ---
+            $campos = implode(', ', array_keys($dadosNota));
+            $valores = ':' . implode(', :', array_keys($dadosNota));
+            
+            $sql = "INSERT INTO notas_fiscais ({$campos}) VALUES ({$valores})";
+            $stmt = $db->prepare($sql);
+            
+            foreach ($dadosNota as $key => $value) {
+                $stmt->bindValue(':' . $key, $value);
+            }
+            
+            if ($stmt->execute()) {
+                $idNota = $db->lastInsertId();
+                $msg = 'Registro de cálculo de IRRF salvo com sucesso!';
+            } else {
+                throw new Exception('Erro ao executar SQL: ' . implode(', ', $stmt->errorInfo()));
+            }
+        }
+
+        header('Content-Type: application/json');
+        echo json_encode([
                 'success' => true,
                 'id_nota' => $idNota,
-                'message' => 'Registro de cálculo de IRRF salvo com sucesso!',
+                'message' => $msg,
                 'numero_nota' => $dadosNota['numero_nota']
             ], JSON_UNESCAPED_UNICODE);
-        } else {
-            throw new Exception('Erro ao executar SQL: ' . implode(', ', $stmt->errorInfo()));
-        }
         
     } catch (Exception $e) {
         error_log("Erro ao salvar nota: " . $e->getMessage());

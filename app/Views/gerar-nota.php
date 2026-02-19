@@ -182,8 +182,13 @@ require_once __DIR__ . '/layout/header.php';
         }
         
         .badge-simples {
-            background-color: #d4edda;
-            color: #155724;
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+
+        .badge-mei {
+            background-color: #f8d7da;
+            color: #721c24;
         }
         
         .badge-presumido {
@@ -197,8 +202,8 @@ require_once __DIR__ . '/layout/header.php';
         }
         
         .badge-outros {
-            background-color: #f8d7da;
-            color: #721c24;
+            background-color: #d4edda;
+            color: #155724;
         }
         
         .info-text {
@@ -678,6 +683,7 @@ require_once __DIR__ . '/layout/header.php';
                         // Aplicar badge ao regime
                         var badgeClass = 'badge-outros';
                         if (regime.toLowerCase().includes('simples')) badgeClass = 'badge-simples';
+                        else if (regime.toLowerCase().includes('mei')) badgeClass = 'badge-mei';
                         else if (regime.toLowerCase().includes('presumido')) badgeClass = 'badge-presumido';
                         else if (regime.toLowerCase().includes('real')) badgeClass = 'badge-real';
                         

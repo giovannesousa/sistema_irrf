@@ -8,7 +8,7 @@ class ReinfConfig {
     private $certPass;
     private $ambiente; // 2 = Produção Restrita
 
-    public function __construct($certPath, $certPass, $ambiente = 2) {
+    public function __construct($certPath, $certPass, $ambiente = 1) {
         $this->certPath = $certPath; // Caminho para o .pem ou .pfx
         $this->certPass = $certPass;
         $this->ambiente = $ambiente;

@@ -34,7 +34,7 @@ class R1000Controller {
         } else {
             $certPath = __DIR__ . '/../../certificados/' . $configOrgao['certificado_arquivo'];
             $certPass = $configOrgao['certificado_senha'];
-            $this->reinfConfig = new ReinfConfig($certPath, $certPass, 2); // 2 = Pre-Prod
+            $this->reinfConfig = new ReinfConfig($certPath, $certPass, 1); // 2 = Pre-Prod
         }
     }
 
@@ -116,7 +116,7 @@ class R1000Controller {
             if (!$idOrgao) throw new Exception("Órgão não identificado.");
 
             $dadosOrgao = $this->getDadosOrgao($idOrgao);
-            $dadosOrgao['ambiente'] = 2; // Pre-prod
+            $dadosOrgao['ambiente'] = 1; // Pre-prod
 
             $builder = new R1000Builder();
             $signer = new ReinfSigner($this->reinfConfig);
@@ -169,7 +169,7 @@ class R1000Controller {
             if (!$idOrgao) throw new Exception("Órgão não identificado.");
 
             $dadosOrgao = $this->getDadosOrgao($idOrgao);
-            $dadosOrgao['ambiente'] = 2;
+            $dadosOrgao['ambiente'] = 1;
 
             // 1. Gera e Assina
             $builder = new R1000Builder();
@@ -219,7 +219,7 @@ class R1000Controller {
             if (!$idOrgao) throw new Exception("Órgão não identificado.");
 
             $dadosOrgao = $this->getDadosOrgao($idOrgao);
-            $dadosOrgao['ambiente'] = 2;
+            $dadosOrgao['ambiente'] = 1;
 
             // 1. Gera XML de Exclusão
             $builder = new R1000Builder();
@@ -330,7 +330,7 @@ class R1000Controller {
             $signer = new ReinfSigner($this->reinfConfig);
             $client = new ReinfClient($this->reinfConfig);
             $dadosOrgao = $this->getDadosOrgao($idOrgao);
-            $dadosOrgao['ambiente'] = 2;
+            $dadosOrgao['ambiente'] = 1;
 
             $enviados = 0;
             $lotesEnviados = 0;
@@ -503,6 +503,44 @@ class R1000Controller {
                 $this->jsonResponse(['success' => true, 'status' => 'processando', 'mensagem' => 'Aguardando processamento da Receita... (Cód: ' . $cdStatus . ')']);
             }
 
+        } catch (Exception $e) {
+            $this->jsonError($e->getMessage());
+        }
+    }
+
+    public function sincronizarManual() {
+        try {
+            $idOrgao = $_SESSION['usuario']['id_orgao'] ?? null;
+            if (!$idOrgao) {
+                throw new Exception("Órgão não identificado na sessão.");
+            }
+
+            $input = json_decode(file_get_contents('php://input'), true);
+            $recibo = $input['numero_recibo'] ?? null;
+
+            if (empty($recibo)) {
+                throw new Exception("O número do recibo não foi informado.");
+            }
+            
+            // Validação do formato do recibo conforme XSD
+            if (!preg_match('/^[0-9]{1,18}-[0-9]{2}-[0-9]{4}-[0-9]{4}-[0-9]{1,18}$/', $recibo)) {
+                 throw new Exception("O formato do recibo parece inválido. Ex: 12345-01-1000-2024-...");
+            }
+
+            $sql = "UPDATE orgaos SET 
+                    r1000_enviado = 1,
+                    r1000_recibo = :recibo,
+                    r1000_data_envio = NOW(),
+                    updated_at = NOW()
+                    WHERE id = :id_orgao";
+            
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute([
+                ':recibo' => $recibo,
+                ':id_orgao' => $idOrgao
+            ]);
+
+            $this->jsonResponse(['success' => true, 'message' => 'Órgão sincronizado com sucesso! O cadastro agora está ativo no sistema.']);
         } catch (Exception $e) {
             $this->jsonError($e->getMessage());
         }

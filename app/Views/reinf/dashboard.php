@@ -279,7 +279,11 @@ require_once __DIR__ . '/../layout/header.php';
                     renderHistorico(res.historico);
                     renderResumo(res.resumo);
                     atualizarBotoesPeriodo(res.status_periodo); // Atualiza botões Fechar/Reabrir
-                    carregarExtratoFechamento(); // Carrega o extrato R-9015 se houver fechamento
+                    if (res.status_periodo === 'Fechado') {
+                        carregarExtratoFechamento(); // Carrega o extrato R-9015 se houver fechamento
+                    } else {
+                        $('#cardExtratoFechamento').hide();
+                    }
                 } else {
                     showAlert('danger', 'Erro ao carregar dados: ' + res.error);
                 }

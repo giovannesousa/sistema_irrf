@@ -224,8 +224,16 @@ if ($action == 'salvar_nota') {
         }
         
         // Calcular valor líquido
-        $valorBruto = floatval(str_replace(['.', ','], ['', '.'], $input['valor_bruto']));
-        $valorIRRF = floatval(str_replace(['.', ','], ['', '.'], $input['valor_irrf_retido']));
+        // Correção: Verifica se o valor possui vírgula (formato BR) antes de remover pontos
+        // Isso evita que valores float enviados pelo JS (ex: 57.60) percam o ponto decimal (virando 5760)
+        $valorBruto = (strpos((string)$input['valor_bruto'], ',') !== false) 
+            ? floatval(str_replace(['.', ','], ['', '.'], $input['valor_bruto']))
+            : floatval($input['valor_bruto']);
+            
+        $valorIRRF = (strpos((string)$input['valor_irrf_retido'], ',') !== false)
+            ? floatval(str_replace(['.', ','], ['', '.'], $input['valor_irrf_retido']))
+            : floatval($input['valor_irrf_retido']);
+
         $valorLiquido = $valorBruto - $valorIRRF;
         
         // Processar Upload de Arquivo

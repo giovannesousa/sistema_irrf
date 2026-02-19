@@ -79,6 +79,7 @@ $routes = [
     'relatorios' => 'relatorios.php',
     'fornecedores' => 'fornecedores.php',
     'reinf' => 'reinf/dashboard.php',
+    'gere-4020' => 'reinf/dashboar4020.php',
     'configuracoes' => 'configuracoes.php',
     'usuarios' => 'usuarios.php',
     'orgao' => 'orgao.php',

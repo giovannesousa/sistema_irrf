@@ -283,13 +283,13 @@ $usuario = $_SESSION['usuario'] ?? null;
                 </div>
 
                 <?php if (($usuario['nivel_acesso'] ?? '') === 'admin'): ?>
-                <div class="nav-item">
+                <!--div class="nav-item">
                     <a class="nav-link <?php echo ($pagina_atual == 'orgao') ? 'active' : ''; ?>"
                         href="/sistema_irrf/public/orgao.php">
                         <i class="bi bi-building"></i>
                         <span>Órgão</span>
                     </a>
-                </div>
+                </div-->
                 <?php endif; ?>
 
                 <div class="nav-item">
@@ -318,6 +318,14 @@ $usuario = $_SESSION['usuario'] ?? null;
                         href="/sistema_irrf/public/reinf">
                         <i class="bi bi-cloud-arrow-up"></i>
                         <span>EFD-Reinf</span>
+                    </a>
+                </div>
+
+                <div class="nav-item">
+                    <a class="nav-link <?php echo ($pagina_atual == 'geren-4020') ? 'active' : ''; ?>"
+                        href="/sistema_irrf/public/geren-4020">
+                        <i class="bi bi-send-check"></i>
+                        <span>Gerenciar R-4000</span>
                     </a>
                 </div>
 

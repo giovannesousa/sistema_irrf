@@ -38,7 +38,7 @@ require_once __DIR__ . '/layout/header.php';
                                 <i class="bi bi-cash-stack display-4 text-success"></i>
                                 <h5 class="mt-3">Registrar Pagamento</h5>
                                 <p>Gerencie pagamentos de notas</p>
-                                <a href="#" class="btn btn-success">
+                                <a href="/sistema_irrf/public/pagar-nota" class="btn btn-success">
                                     Acessar
                                 </a>
                             </div>
@@ -51,7 +51,7 @@ require_once __DIR__ . '/layout/header.php';
                                 <i class="bi bi-graph-up display-4 text-info"></i>
                                 <h5 class="mt-3">Relatórios</h5>
                                 <p>Relatórios e estatísticas</p>
-                                <a href="#" class="btn btn-info">
+                                <a href="/sistema_irrf/public/relatorios" class="btn btn-info">
                                     Acessar
                                 </a>
                             </div>

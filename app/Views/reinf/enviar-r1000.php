@@ -87,6 +87,8 @@ require_once __DIR__ . '/../layout/header.php';
                                     <option value="06">06 - Fundação Privada</option>
                                     <option value="07">07 - Fundação Pública</option>
                                     <option value="08">08 - Organização Social</option>
+                                    <option value="80">80 - Entidade Beneficente/Isenta</option>
+                                    <option value="85">85 - Administração Pública</option>
                                 </select>
                                 <small class="text-muted">Padrão: 99 (PJ em geral)</small>
                             </div>
@@ -172,8 +174,8 @@ require_once __DIR__ . '/../layout/header.php';
                                     <button type="button" class="btn btn-secondary" onclick="salvarDados()">
                                         <i class="fas fa-save me-1"></i>Salvar Rascunho
                                     </button>
-                                    <button type="button" class="btn btn-info" onclick="consultarR1000()">
-                                        <i class="fas fa-sync-alt me-1"></i>Consultar Status
+                                    <button type="button" class="btn btn-outline-primary" onclick="sincronizarReciboManual()" title="Se este órgão já está cadastrado na produção, informe o recibo aqui para ativar o sistema.">
+                                        <i class="fas fa-link me-1"></i>Sincronizar Recibo
                                     </button>
                                     <button type="button" class="btn btn-success" id="btnEnviarR1000" onclick="enviarR1000()">
                                         <i class="fas fa-paper-plane me-1"></i>Enviar para Receita
@@ -417,6 +419,43 @@ require_once __DIR__ . '/../layout/header.php';
                 } else {
                     alert('Erro/Aviso: ' + res.error);
                 }
+            }
+        });
+    }
+
+    function sincronizarReciboManual() {
+        const recibo = prompt("Informe o número do recibo do evento R-1000 que já foi transmitido e aceito na Receita Federal (Produção).");
+
+        if (!recibo || recibo.trim() === '') {
+            alert("Operação cancelada. O número do recibo é obrigatório.");
+            return;
+        }
+
+        if (!confirm("Confirma que o recibo '" + recibo + "' está correto e deseja sincronizar o status deste órgão?")) {
+            return;
+        }
+
+        $('#loadingOverlay').removeClass('d-none');
+        $('#loadingMessage').text('Sincronizando recibo...');
+
+        $.ajax({
+            url: '/sistema_irrf/public/api/api-r1000.php?action=sincronizar_manual',
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({ numero_recibo: recibo.trim() }),
+            dataType: 'json',
+            success: function(res) {
+                $('#loadingOverlay').addClass('d-none');
+                if (res.success) {
+                    alert(res.message);
+                    carregarDados(); // Recarrega tudo para atualizar o status
+                } else {
+                    alert('Erro na sincronização: ' + res.error);
+                }
+            },
+            error: function(xhr) {
+                $('#loadingOverlay').addClass('d-none');
+                alert('Erro na comunicação com o servidor.');
             }
         });
     }

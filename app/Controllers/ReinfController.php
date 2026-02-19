@@ -56,6 +56,9 @@ switch ($action) {
     case 'recuperar_recibos': // NOVO - Utilitário para listar recibos
         $controller->recuperarRecibos4020();
         break;
+    case 'sincronizar_cadeia': // NOVO - Corrige status de eventos retificados
+        $controller->sincronizarCadeiaRetificacao();
+        break;
     default:
         echo json_encode(['success' => false, 'error' => 'Ação inválida']);
 }
@@ -86,7 +89,7 @@ class ReinfController
         } else {
             $certPath = __DIR__ . '/../../certificados/' . $configOrgao['certificado_arquivo'];
             $certPass = $configOrgao['certificado_senha'];
-            $this->reinfConfig = new ReinfConfig($certPath, $certPass, 2);
+            $this->reinfConfig = new ReinfConfig($certPath, $certPass, 1);
         }
     }    
 
@@ -105,6 +108,8 @@ class ReinfController
                     e.numero_recibo,
                     e.mensagem_erro,
                     e.id_evento_xml,
+                    e.tipo_evento,
+                    e.xml_assinado,
                     COALESCE(f.razao_social, CASE 
                         WHEN e.tipo_evento = 'R-4099' AND e.xml_assinado LIKE '%<fechRet>1</fechRet>%' THEN 'Reabertura de Período'
                         WHEN e.tipo_evento = 'R-4099' AND e.xml_assinado LIKE '%<fechRet>0</fechRet>%' THEN 'Fechamento de Período'
@@ -121,6 +126,18 @@ class ReinfController
             $stmt = $this->db->prepare($sql);
             $stmt->execute([':id_lote' => $idLote]);
             $eventos = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            foreach ($eventos as &$evento) {
+                $evento['is_retificacao'] = (strpos($evento['xml_assinado'] ?? '', '<indRetif>2</indRetif>') !== false);
+                
+                // Extrai o número do recibo que foi retificado (se houver)
+                $evento['recibo_retificado'] = null;
+                if ($evento['is_retificacao'] && preg_match('/<nrRecibo>(.*?)<\/nrRecibo>/', $evento['xml_assinado'], $matches)) {
+                    $evento['recibo_retificado'] = $matches[1];
+                }
+
+                unset($evento['xml_assinado']); // Remove para não pesar o JSON
+            }
 
             echo json_encode(['success' => true, 'eventos' => $eventos]);
 
@@ -255,16 +272,29 @@ class ReinfController
                     $exclusoes = $xpathEnvio->query("//*[local-name()='evtExclusao']");
                     foreach ($exclusoes as $exclusao) {
                         $idExclusao = $exclusao->getAttribute('id');
+                        if (!$idExclusao) $idExclusao = $exclusao->getAttribute('Id');
                         
-                        // 1. Verifica SUCESSO (2001)
-                        $sucessoNode = $xpath->query("//*[local-name()='evento'][@Id='$idExclusao']//*[local-name()='cdRetorno'][text()='2001']")->item(0);
+                        // 1. Verifica SUCESSO (2001 ou 0) e flexibiliza busca do ID (Id ou id)
+                        $sucessoNode = $xpath->query("//*[local-name()='evento'][@Id='$idExclusao' or @id='$idExclusao']//*[local-name()='cdRetorno'][text()='2001' or text()='0']")->item(0);
                         
                         if ($sucessoNode) {
                             // Pega o recibo que foi excluído (ou tentado)
                             $nrRecEvt = $xpathEnvio->query(".//*[local-name()='nrRecEvt']", $exclusao)->item(0);
                             if ($nrRecEvt) {
                                 $reciboExcluido = $nrRecEvt->nodeValue;
+                                
+                                // 1. Busca XML do evento excluído para ver se era retificador
+                                $stmtGet = $this->db->prepare("SELECT xml_assinado FROM reinf_eventos WHERE numero_recibo = ?");
+                                $stmtGet->execute([$reciboExcluido]);
+                                $xmlExcluido = $stmtGet->fetchColumn();
+
+                                // 2. Marca como excluído
                                 $this->db->prepare("UPDATE reinf_eventos SET status = 'excluido' WHERE numero_recibo = ?")->execute([$reciboExcluido]);
+
+                                // 3. Se era retificação, restaura o evento anterior para 'sucesso'
+                                if ($xmlExcluido && strpos($xmlExcluido, '<indRetif>2</indRetif>') !== false && preg_match('/<nrRecibo>(.*?)<\/nrRecibo>/', $xmlExcluido, $matches)) {
+                                    $this->db->prepare("UPDATE reinf_eventos SET status = 'sucesso' WHERE numero_recibo = ? AND status = 'retificado'")->execute([$matches[1]]);
+                                }
                             }
                         }
                     }
@@ -346,7 +376,7 @@ class ReinfController
 
             // Busca histórico de EVENTOS individuais (R-4020, R-9000, etc)
             $sqlEventos = "
-                SELECT e.id, e.id_lote, l.created_at, e.tipo_evento, e.status, e.numero_recibo, e.mensagem_erro,
+                SELECT e.id, e.id_lote, l.created_at, e.tipo_evento, e.status, e.numero_recibo, e.mensagem_erro, e.xml_assinado,
                        COALESCE(f.razao_social, CASE 
                            WHEN e.tipo_evento = 'R-4099' AND e.xml_assinado LIKE '%<fechRet>1</fechRet>%' THEN 'Reabertura de Período'
                            WHEN e.tipo_evento = 'R-4099' AND e.xml_assinado LIKE '%<fechRet>0</fechRet>%' THEN 'Fechamento de Período'
@@ -365,6 +395,18 @@ class ReinfController
             $stmtEventos = $this->db->prepare($sqlEventos);
             $stmtEventos->execute([':id_orgao' => $this->idOrgao]);
             $eventos = $stmtEventos->fetchAll(PDO::FETCH_ASSOC);
+
+            foreach ($eventos as &$evento) {
+                $evento['is_retificacao'] = (strpos($evento['xml_assinado'] ?? '', '<indRetif>2</indRetif>') !== false);
+                
+                // Extrai o número do recibo que foi retificado (se houver)
+                $evento['recibo_retificado'] = null;
+                if ($evento['is_retificacao'] && preg_match('/<nrRecibo>(.*?)<\/nrRecibo>/', $evento['xml_assinado'], $matches)) {
+                    $evento['recibo_retificado'] = $matches[1];
+                }
+
+                unset($evento['xml_assinado']);
+            }
 
             // --- RESUMO DE ENVIOS COM SUCESSO ---
             $sqlResumo = "
@@ -440,7 +482,7 @@ class ReinfController
                 'tpInsc' => 1, 
                 'nrInsc' => preg_replace('/[^0-9]/', '', $orgaoDb['cnpj']), 
                 'cnpj' => preg_replace('/[^0-9]/', '', $orgaoDb['cnpj']),
-                'ambiente' => 2 // 2 = Pre-Prod
+                'ambiente' => 1 // 2 = Pre-Prod
             ];
 
             $builder = new R4020Builder();
@@ -600,7 +642,7 @@ class ReinfController
                 'tpInsc' => 1, 
                 'nrInsc' => preg_replace('/[^0-9]/', '', $orgaoDb['cnpj']), 
                 'cnpj' => preg_replace('/[^0-9]/', '', $orgaoDb['cnpj']),
-                'ambiente' => 2
+                'ambiente' => 1
             ];
 
             // 3. Gera XML de Exclusão (R-9000)
@@ -669,7 +711,7 @@ class ReinfController
                 'tpInsc' => 1, 
                 'nrInsc' => preg_replace('/[^0-9]/', '', $orgaoDb['cnpj']), 
                 'tpInsc' => 1, // 1 = CNPJ
-                'ambiente' => 2 // Pre-prod
+                'ambiente' => 1 // Pre-prod
             ];
 
             $responsavel = [
@@ -862,6 +904,41 @@ class ReinfController
         }
     }
 
+    public function sincronizarCadeiaRetificacao() {
+        try {
+            // Busca todos os eventos que são retificações (indRetif = 2) e têm sucesso/processado
+            // O objetivo é garantir que o evento ALVO da retificação (o anterior) esteja com status 'retificado'
+            $sql = "SELECT xml_assinado FROM reinf_eventos 
+                    WHERE tipo_evento = 'R-4020' 
+                    AND xml_assinado LIKE '%<indRetif>2</indRetif>%' 
+                    AND status IN ('sucesso', 'retificado')";
+            
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute();
+            $retificadores = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            $atualizados = 0;
+            foreach ($retificadores as $row) {
+                // Extrai o número do recibo anterior do XML do evento retificador
+                if (preg_match('/<nrRecibo>(.*?)<\/nrRecibo>/', $row['xml_assinado'], $matches)) {
+                    $reciboAnterior = $matches[1];
+                    
+                    // Atualiza o evento que possui esse recibo para 'retificado'
+                    // Isso corrige eventos que ficaram com status 'sucesso' ou vazio indevidamente
+                    $upd = "UPDATE reinf_eventos SET status = 'retificado' WHERE numero_recibo = ? AND status != 'retificado'";
+                    $stmtUpd = $this->db->prepare($upd);
+                    $stmtUpd->execute([$reciboAnterior]);
+                    $atualizados += $stmtUpd->rowCount();
+                }
+            }
+
+            echo json_encode(['success' => true, 'message' => "Sincronização concluída. $atualizados eventos corrigidos para 'retificado'."]);
+
+        } catch (Exception $e) {
+            $this->jsonError($e->getMessage());
+        }
+    }
+
     /**
      * Monta o envelope manualmente para garantir que a Assinatura (Signature)
      * mantenha seu namespace original (http://www.w3.org/2000/09/xmldsig#).
@@ -963,7 +1040,7 @@ class ReinfController
                 'tpInsc' => 1, 
                 'nrInsc' => preg_replace('/[^0-9]/', '', $orgaoDb['cnpj']), 
                 'cnpj' => preg_replace('/[^0-9]/', '', $orgaoDb['cnpj']), 
-                'ambiente' => 2
+                'ambiente' => 1
             ];
 
             $builder = new R4020Builder();

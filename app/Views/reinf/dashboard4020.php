@@ -10,8 +10,8 @@ if (!Session::isLoggedIn()) {
     exit;
 }
 
-$titulo = "EFD-Reinf - Gerenciamento";
-$pagina_atual = "reinf";
+$titulo = "Gerenciamento de Eventos periódicos (R-4000)";
+$pagina_atual = "geren-4020";
 
 require_once __DIR__ . '/../layout/header.php';
 ?>
@@ -35,7 +35,12 @@ require_once __DIR__ . '/../layout/header.php';
     <!-- Navegação de Abas -->
     <ul class="nav nav-tabs mb-4" id="reinfTabs" role="tablist">
         <li class="nav-item" role="presentation">
-            <button class="nav-link active" id="pendencias-tab" data-bs-toggle="tab" data-bs-target="#pendencias" type="button">
+            <button class="nav-link active" id="eventos-tab" data-bs-toggle="tab" data-bs-target="#eventos" type="button">
+                <i class="bi bi-list-ul me-2"></i>Histórico de Eventos
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="pendencias-tab" data-bs-toggle="tab" data-bs-target="#pendencias" type="button">
                 <i class="bi bi-exclamation-circle me-2"></i>Pendências de Envio
             </button>
         </li>
@@ -44,17 +49,44 @@ require_once __DIR__ . '/../layout/header.php';
                 <i class="bi bi-clock-history me-2"></i>Histórico de Lotes
             </button>
         </li>
-        <li class="nav-item" role="presentation">
-            <button class="nav-link" id="eventos-tab" data-bs-toggle="tab" data-bs-target="#eventos" type="button">
-                <i class="bi bi-list-ul me-2"></i>Histórico de Eventos
-            </button>
-        </li>
     </ul>
 
     <div class="tab-content" id="reinfTabsContent">
         
-        <!-- ABA 1: PENDÊNCIAS (Gerar R-4020) -->
-        <div class="tab-pane fade show active" id="pendencias" role="tabpanel">
+        <!-- ABA 1: HISTÓRICO DE EVENTOS (Individual) -->
+        <div class="tab-pane fade show active" id="eventos" role="tabpanel">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <div class="d-flex justify-content-end mb-2">
+                        <button class="btn btn-sm btn-outline-secondary" onclick="sincronizarStatus()" title="Corrige status de eventos que foram retificados mas não atualizaram">
+                            <i class="bi bi-arrow-repeat me-1"></i>Sincronizar Retificações
+                        </button>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle">
+                            <thead class="bg-light">
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Lote</th>
+                                    <th>Data</th>
+                                    <th>Evento</th>
+                                    <th>Fornecedor</th>
+                                    <th>Recibo</th>
+                                    <th>Status</th>
+                                    <th class="text-end">Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody id="listaEventosHistorico">
+                                <!-- Preenchido via JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ABA 2: PENDÊNCIAS (Gerar R-4020) -->
+        <div class="tab-pane fade" id="pendencias" role="tabpanel">
             <div class="card border-0 shadow-sm">
                 <div class="card-body">
                     <div class="alert alert-info d-flex align-items-center">
@@ -94,7 +126,7 @@ require_once __DIR__ . '/../layout/header.php';
             </div>
         </div>
 
-        <!-- ABA 2: HISTÓRICO (Lotes Enviados) -->
+        <!-- ABA 3: HISTÓRICO (Lotes Enviados) -->
         <div class="tab-pane fade" id="historico" role="tabpanel">
             <div class="card border-0 shadow-sm">
                 <div class="card-body">
@@ -110,33 +142,6 @@ require_once __DIR__ . '/../layout/header.php';
                                 </tr>
                             </thead>
                             <tbody id="listaHistorico">
-                                <!-- Preenchido via JS -->
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- ABA 3: HISTÓRICO DE EVENTOS (Individual) -->
-        <div class="tab-pane fade" id="eventos" role="tabpanel">
-            <div class="card border-0 shadow-sm">
-                <div class="card-body">
-                    <div class="table-responsive">
-                        <table class="table table-hover align-middle">
-                            <thead class="bg-light">
-                                <tr>
-                                    <th>ID</th>
-                                    <th>Lote</th>
-                                    <th>Data</th>
-                                    <th>Evento</th>
-                                    <th>Fornecedor</th>
-                                    <th>Recibo</th>
-                                    <th>Status</th>
-                                    <th class="text-end">Ações</th>
-                                </tr>
-                            </thead>
-                            <tbody id="listaEventosHistorico">
                                 <!-- Preenchido via JS -->
                             </tbody>
                         </table>
@@ -280,25 +285,45 @@ require_once __DIR__ . '/../layout/header.php';
         } else {
             lista.forEach(e => {
                 let badge = '';
+                let linhaClass = '';
+                
                 switch(e.status) {
-                    case 'sucesso': badge = '<span class="badge bg-success">Sucesso</span>'; break;
+                    case 'sucesso': 
+                        if (e.tipo_evento && e.tipo_evento.indexOf('R-4099') !== -1) {
+                            badge = '<span class="badge bg-success">Sucesso</span>';
+                        } else if (e.tipo_evento === 'R-9000') {
+                            badge = '<span class="badge bg-secondary"><i class="bi bi-check-circle me-1"></i>Exclusão Processada</span>';
+                        } else {
+                            badge = '<span class="badge bg-success"><i class="bi bi-check-circle me-1"></i>Ativo na Receita</span>'; 
+                            linhaClass = 'table-success'; // Destaca levemente o ativo
+                        }
+                        break;
                     case 'rejeitado': badge = '<span class="badge bg-danger">Rejeitado</span>'; break;
                     case 'excluido': badge = '<span class="badge bg-secondary">Excluído</span>'; break;
+                    case 'retificado': badge = '<span class="badge bg-secondary text-decoration-line-through" title="Substituído por uma retificação posterior">Retificado (Histórico)</span>'; break;
                     default: badge = `<span class="badge bg-warning text-dark">${e.status}</span>`;
                 }
                 
                 let btnExcluir = '';
                 let btnRetificar = '';
+                let infoRetificacao = '';
+
+                if (e.is_retificacao) {
+                    infoRetificacao = `<div class="small text-primary mt-1"><i class="bi bi-arrow-return-right"></i> Retifica: ${e.recibo_retificado || '?'}</div>`;
+                    badge += ' <span class="badge bg-info text-dark ms-1">Retificador</span>';
+                }
 
                 if (e.status === 'sucesso') {
-                    btnExcluir = `<button class="btn btn-sm btn-outline-danger" onclick="excluirEvento(${e.id})" title="Excluir Evento"><i class="bi bi-trash"></i></button>`;
+                    if (e.tipo_evento.indexOf('R-4099') === -1 && e.tipo_evento !== 'R-9000') {
+                        btnExcluir = `<button class="btn btn-sm btn-outline-danger" onclick="excluirEvento(${e.id})" title="Excluir Evento"><i class="bi bi-trash"></i></button>`;
+                    }
                     if (e.tipo_evento === 'R-4020') {
                         btnRetificar = `<button class="btn btn-sm btn-outline-warning me-1" onclick="retificarEvento(${e.id_fornecedor}, '${e.per_apuracao}', '${e.razao_social.replace(/'/g, "\\'")}')" title="Retificar (Reenviar)"><i class="bi bi-pencil-square"></i></button>`;
                     }
                 }
 
                 html += `
-                    <tr>
+                    <tr class="${linhaClass}">
                         <td>${e.id}</td>
                         <td>${e.id_lote}</td>
                         <td>${new Date(e.created_at).toLocaleString('pt-BR')}</td>
@@ -307,7 +332,10 @@ require_once __DIR__ . '/../layout/header.php';
                             <div class="fw-bold">${e.razao_social || 'N/A'}</div>
                             <small class="text-muted">${e.cnpj || ''}</small>
                         </td>
-                        <td><small class="text-monospace">${e.numero_recibo || '-'}</small></td>
+                        <td>
+                            <div class="text-monospace fw-bold">${e.numero_recibo || '-'}</div>
+                            ${infoRetificacao}
+                        </td>
                         <td>${badge}</td>
                         <td class="text-end">${btnRetificar}${btnExcluir}</td>
                     </tr>
@@ -548,6 +576,22 @@ require_once __DIR__ . '/../layout/header.php';
                 if(btn.length) btn.prop('disabled', false).html('<i class="bi bi-trash"></i>');
             }
         });
+    }
+
+    function sincronizarStatus() {
+        const btn = $('button[onclick="sincronizarStatus()"]');
+        const originalHtml = btn.html();
+        btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span> Processando...');
+
+        $.get('/sistema_irrf/public/api/api-reinf.php?action=sincronizar_cadeia', function(res) {
+            btn.prop('disabled', false).html(originalHtml);
+            if (res.success) {
+                alert(res.message);
+                carregarDados();
+            } else {
+                alert('Erro: ' + res.error);
+            }
+        }, 'json');
     }
 </script>
 
